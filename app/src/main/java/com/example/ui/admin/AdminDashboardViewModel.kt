@@ -171,6 +171,9 @@ class AdminDashboardViewModel(
         if (title.isBlank() || (contentBody.isBlank() && summary.isBlank() && !hasUploadedAudio)) return
         viewModelScope.launch {
             val normalizedCategory = category.uppercase().trim()
+            if (hasUploadedAudio) {
+                _statusMessage.value = "Uploading audio sermon '${title.trim()}' & replacing previous audio..."
+            }
             val resolvedSummary = summary.trim().ifBlank {
                 contentBody.trim().take(120).ifBlank { "Audio Sermon • ${audioDraft?.fileName ?: title.trim()}" }
             }
@@ -184,7 +187,7 @@ class AdminDashboardViewModel(
                 id = "res_${UUID.randomUUID().toString().take(8)}",
                 title = title.trim(),
                 category = normalizedCategory,
-                speakerOrAuthor = author.trim().ifBlank { "ECWA Youth Ministry" },
+                speakerOrAuthor = author.trim().ifBlank { "Living Faith Church Youth Ministry" },
                 scriptureReference = scriptureReference.trim().ifBlank { "2 Timothy 2:15" },
                 summary = resolvedSummary,
                 contentBody = resolvedBody,
@@ -198,7 +201,11 @@ class AdminDashboardViewModel(
                 audioSizeBytes = if (hasUploadedAudio) audioDraft?.sizeBytes ?: 0L else 0L,
                 audioChunkCount = 0
             )
-            spiritualResourceRepository.addResource(resource)
+            val result = spiritualResourceRepository.addResource(resource)
+            result.onFailure { err ->
+                _statusMessage.value = err.message ?: "Failed to publish $normalizedCategory."
+                return@launch
+            }
             auditLogDao.insertLog(
                 AuditLogEntity(
                     userId = adminUserId,

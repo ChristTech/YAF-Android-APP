@@ -457,4 +457,73 @@ class Phase2And3Test {
         )
         assertNotNull(notifDao.getNotificationByIdSync("notif_remote_alice"))
     }
+
+    @Test
+    fun testAdminOrganizationMigratesFromLegacyToLivingFaithChurch() = runBlocking {
+        val legacyAdmin = UserEntity(
+            id = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID,
+            fullName = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_NAME,
+            email = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_EMAIL,
+            phone = "+2348011223344",
+            passwordHash = "hash",
+            salt = "salt",
+            role = UserRole.ADMINISTRATOR,
+            status = AccountStatus.APPROVED,
+            gender = Gender.PREFER_NOT_TO_SAY,
+            address = "ECWA Youth Alive Fellowship Secretariat"
+        )
+        database.userDao().insertUser(legacyAdmin)
+
+        com.example.data.local.DatabasePrepopulator.populateInitialData(database)
+
+        val updatedAdmin = database.userDao().getUserByIdSync(com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID)
+        assertNotNull(updatedAdmin)
+        assertEquals("Living Faith Church Youth Alive Fellowship Secretariat", updatedAdmin!!.address)
+        assertFalse(updatedAdmin.address.contains("ECWA", ignoreCase = true))
+    }
+
+    @Test
+    fun testAudioSermonFileCandidateValidationSupportsAudioAndRejectsDocs() {
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("audio/mpeg", "sunday_sermon.mp3"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/octet-stream", "voice_note.m4a"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/ogg", "whatsapp_audio.opus"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("video/mp4", "recording.m4a"))
+        assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/pdf", "sermon_notes.pdf"))
+        assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/epub+zip", "bible.epub"))
+        assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("text/plain", "notes.txt"))
+    }
+
+    @Test
+    fun testGitHubUpdateCheckerVersionComparisonAndJsonParsing() {
+        assertTrue(com.example.core.update.AppUpdateChecker.isNewerVersion("1.0", "v1.0.1"))
+        assertTrue(com.example.core.update.AppUpdateChecker.isNewerVersion("1.0", "v1.1"))
+        assertTrue(com.example.core.update.AppUpdateChecker.isNewerVersion("1.0.9", "v1.1.0"))
+        assertFalse(com.example.core.update.AppUpdateChecker.isNewerVersion("1.0", "v1.0.0"))
+        assertFalse(com.example.core.update.AppUpdateChecker.isNewerVersion("1.2.0", "v1.1.9"))
+
+        val sampleJson = """
+            {
+              "tag_name": "v1.2.0",
+              "name": "Gideonites v1.2.0 Release",
+              "body": "- Removed ECWA branding\n- Fixed audio sermon upload",
+              "html_url": "https://github.com/ChristTech/YAF-Android-APP/releases/tag/v1.2.0",
+              "draft": false,
+              "published_at": "2026-11-23T10:00:00Z",
+              "assets": [
+                {
+                  "name": "app-release.apk",
+                  "size": 19500000,
+                  "browser_download_url": "https://github.com/ChristTech/YAF-Android-APP/releases/download/v1.2.0/app-release.apk"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = com.example.core.update.AppUpdateChecker.parseGitHubReleaseJson(sampleJson)
+        assertNotNull(parsed)
+        assertEquals("1.2.0", parsed!!.latestVersion)
+        assertEquals("v1.2.0", parsed.tagName)
+        assertEquals("https://github.com/ChristTech/YAF-Android-APP/releases/download/v1.2.0/app-release.apk", parsed.apkDownloadUrl)
+        assertEquals("app-release.apk", parsed.apkFileName)
+    }
 }

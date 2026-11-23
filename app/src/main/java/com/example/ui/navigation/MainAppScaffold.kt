@@ -143,6 +143,11 @@ fun MainAppScaffold(
     val preferredLang = com.example.core.localization.LanguageManager.preferredLanguage.value
     val isEnglishOverride = com.example.core.localization.LanguageManager.isEnglishOverride.value
     val appStrings = com.example.core.localization.LanguageManager.strings(activeLang)
+    val updateState by container.updateManager.state.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        container.updateManager.checkForUpdates(manual = false)
+    }
 
     if (session == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -977,6 +982,32 @@ fun MainAppScaffold(
             }
         }
     }
+
+    val activeUpdate = updateState as? com.example.core.update.UpdateCheckState.UpdateAvailable
+    if (activeUpdate != null) {
+        com.example.ui.components.AppUpdateDialog(
+            release = activeUpdate.release,
+            onDownloadClick = {
+                container.updateManager.openDownloadInBrowser(
+                    context = context,
+                    url = activeUpdate.release.apkDownloadUrl ?: activeUpdate.release.htmlUrl
+                )
+                container.updateManager.dismissUpdateDialog(activeUpdate.release.tagName, skipVersion = false)
+            },
+            onViewReleasePageClick = {
+                container.updateManager.openDownloadInBrowser(
+                    context = context,
+                    url = activeUpdate.release.htmlUrl
+                )
+            },
+            onLaterClick = {
+                container.updateManager.dismissUpdateDialog(activeUpdate.release.tagName, skipVersion = false)
+            },
+            onSkipVersionClick = {
+                container.updateManager.dismissUpdateDialog(activeUpdate.release.tagName, skipVersion = true)
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1146,7 +1177,11 @@ private fun ProfileHubScreen(
                         session
                     )
                 )
-                ProfileScreen(viewModel = profileViewModel, session = session)
+                ProfileScreen(
+                    viewModel = profileViewModel,
+                    session = session,
+                    updateManager = container.updateManager
+                )
             }
             1 -> {
                 val financeViewModel: FinanceViewModel = viewModel(

@@ -457,7 +457,7 @@ private fun ExecutiveOverviewTab(
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                                 Text(
-                                    text = "Upload Sermons, Daily Devotionals, and PDF/EPUB Bibles for Executive game & scripture reference",
+                                    text = "Upload Audio/Text Sermons, Daily Devotionals, and PDF/EPUB Bibles for Executive game & scripture reference",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -618,7 +618,11 @@ private fun ExecutiveOverviewTab(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "[${res.category}] ${res.title}",
+                                        text = buildString {
+                                            append("[${res.category}] ")
+                                            if (res.hasAudio) append("🎧 ")
+                                            append(res.title)
+                                        },
                                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis

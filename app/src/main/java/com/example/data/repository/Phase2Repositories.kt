@@ -1169,22 +1169,65 @@ class SpiritualResourceRepositoryImpl(
             }
         }
 
+        private val EXPLICIT_AUDIO_EXTENSIONS = setOf(
+            "mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac", "3gp", "amr", "wma", "m4b", "mpga", "mpeg"
+        )
+        private val SUPPORTED_AUDIO_EXTENSIONS = EXPLICIT_AUDIO_EXTENSIONS + setOf("mp4", "webm")
+        private val REJECTED_NON_AUDIO_EXTENSIONS = setOf(
+            "pdf", "epub", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "json", "xml",
+            "html", "htm", "jpg", "jpeg", "png", "gif", "webp", "zip", "rar", "7z", "apk"
+        )
+
+        fun isExplicitAudioFile(mimeType: String?, fileName: String?): Boolean {
+            val normalizedMime = mimeType?.trim()?.lowercase().orEmpty()
+            val ext = fileName?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
+            if (ext in EXPLICIT_AUDIO_EXTENSIONS) return true
+            if (normalizedMime.startsWith("audio/")) return true
+            if (normalizedMime == "application/ogg" || normalizedMime == "application/x-ogg") return true
+            return false
+        }
+
+        fun isExplicitAudioFile(context: Context, uri: Uri): Boolean {
+            val (name, mime) = resolveDisplayNameAndMime(context, uri)
+            return isExplicitAudioFile(mime, name)
+        }
+
+        fun isSupportedAudioCandidate(mimeType: String?, fileName: String?): Boolean {
+            val normalizedMime = mimeType?.trim()?.lowercase().orEmpty()
+            val ext = fileName?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
+            if (ext in REJECTED_NON_AUDIO_EXTENSIONS) return false
+            if (normalizedMime.startsWith("text/") || normalizedMime.startsWith("image/")) return false
+            if (normalizedMime.contains("pdf") || normalizedMime.contains("epub") || normalizedMime.contains("wordprocessing")) {
+                return false
+            }
+            if (isExplicitAudioFile(normalizedMime, fileName)) return true
+            if (ext in SUPPORTED_AUDIO_EXTENSIONS) return true
+            if (normalizedMime in setOf("video/mp4", "video/3gpp", "video/webm", "application/octet-stream", "")) {
+                return true
+            }
+            return false
+        }
+
         private fun extensionForMimeOrName(mimeType: String?, fileName: String?): String {
-            val fromName = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it in setOf("mp3", "m4a", "aac", "wav", "ogg", "flac", "3gp", "opus") }
+            val fromName = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it in SUPPORTED_AUDIO_EXTENSIONS }
             if (fromName != null) return fromName
             return when (mimeType?.lowercase()) {
-                "audio/mpeg", "audio/mp3" -> "mp3"
-                "audio/mp4", "audio/aac", "audio/x-m4a", "audio/m4a" -> "m4a"
+                "audio/mpeg", "audio/mp3", "audio/mpeg3", "audio/x-mpeg-3" -> "mp3"
+                "audio/mp4", "audio/aac", "audio/x-m4a", "audio/m4a", "audio/mp4a-latm", "video/mp4" -> "m4a"
                 "audio/wav", "audio/x-wav", "audio/wave" -> "wav"
-                "audio/ogg", "application/ogg" -> "ogg"
-                "audio/flac" -> "flac"
-                "audio/3gpp" -> "3gp"
+                "audio/ogg", "application/ogg", "application/x-ogg" -> "ogg"
+                "audio/opus" -> "opus"
+                "audio/flac", "audio/x-flac" -> "flac"
+                "audio/3gpp", "video/3gpp" -> "3gp"
+                "audio/amr", "audio/amr-wb" -> "amr"
+                "audio/x-ms-wma" -> "wma"
+                "audio/webm", "video/webm" -> "webm"
                 else -> "mp3"
             }
         }
 
         private fun resolveDisplayNameAndMime(ctx: Context, uri: Uri): Pair<String, String> {
-            var name = "sermon_audio.mp3"
+            var name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "sermon_audio.mp3"
             try {
                 ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) {
@@ -1196,13 +1239,26 @@ class SpiritualResourceRepositoryImpl(
                 }
             } catch (_: Exception) {
             }
-            val mime = runCatching { ctx.contentResolver.getType(uri) }.getOrNull()
-                ?: when (name.substringAfterLast('.', "").lowercase()) {
-                    "m4a", "aac" -> "audio/mp4"
+            val rawMime = runCatching { ctx.contentResolver.getType(uri) }.getOrNull().orEmpty()
+            val ext = name.substringAfterLast('.', "").lowercase()
+            val mime = if (rawMime.isNotBlank() && rawMime != "application/octet-stream") {
+                rawMime
+            } else {
+                when (ext) {
+                    "mp3", "mpga", "mpeg" -> "audio/mpeg"
+                    "m4a", "aac", "m4b" -> "audio/mp4"
                     "wav" -> "audio/wav"
-                    "ogg", "opus" -> "audio/ogg"
-                    else -> "audio/mpeg"
+                    "ogg", "oga" -> "audio/ogg"
+                    "opus" -> "audio/opus"
+                    "flac" -> "audio/flac"
+                    "3gp" -> "audio/3gpp"
+                    "amr" -> "audio/amr"
+                    "wma" -> "audio/x-ms-wma"
+                    "mp4" -> rawMime.ifBlank { "video/mp4" }
+                    "webm" -> rawMime.ifBlank { "audio/webm" }
+                    else -> rawMime.ifBlank { "application/octet-stream" }
                 }
+            }
             return name to mime
         }
 
@@ -1215,8 +1271,15 @@ class SpiritualResourceRepositoryImpl(
             }
             try {
                 val uri = Uri.parse(contentUriString)
-                val (fileName, mimeType) = resolveDisplayNameAndMime(context, uri)
-                val ext = extensionForMimeOrName(mimeType, fileName)
+                val (rawFileName, initialMimeType) = resolveDisplayNameAndMime(context, uri)
+                if (!isSupportedAudioCandidate(initialMimeType, rawFileName)) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("'$rawFileName' is not an audio file. Please pick an MP3, M4A, AAC, WAV, OGG, or Voice Recording.")
+                    )
+                }
+
+                val ext = extensionForMimeOrName(initialMimeType, rawFileName)
+                val fileName = if (rawFileName.contains('.')) rawFileName else "$rawFileName.$ext"
                 val audioCloudId = "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
                 val destFile = File(audioDir, "$audioCloudId.$ext")
 
@@ -1250,13 +1313,37 @@ class SpiritualResourceRepositoryImpl(
                 }
 
                 var durationMs = 0L
+                var hasAudioTrack = false
+                var detectedMime: String? = null
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(destFile.absolutePath)
                     durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    hasAudioTrack = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
+                        ?.equals("yes", ignoreCase = true) == true
+                    detectedMime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                        ?.takeIf { it.isNotBlank() }
                 } catch (_: Exception) {
                 } finally {
                     runCatching { retriever.release() }
+                }
+
+                val confirmedAudio = isExplicitAudioFile(initialMimeType, fileName) ||
+                    hasAudioTrack ||
+                    durationMs > 0L ||
+                    detectedMime?.lowercase()?.startsWith("audio/") == true
+
+                if (!confirmedAudio) {
+                    runCatching { destFile.delete() }
+                    return@withContext Result.failure(
+                        IllegalArgumentException("'$fileName' does not contain playable audio. Please select an MP3, M4A, AAC, WAV, OGG, or Voice Note.")
+                    )
+                }
+
+                val resolvedMime = when {
+                    initialMimeType.startsWith("audio/") -> initialMimeType
+                    detectedMime?.startsWith("audio/") == true -> detectedMime!!
+                    else -> "audio/$ext"
                 }
 
                 val durationMins = if (durationMs > 0L) {
@@ -1270,7 +1357,7 @@ class SpiritualResourceRepositoryImpl(
                         audioUri = destFile.absolutePath,
                         audioCloudId = audioCloudId,
                         fileName = fileName,
-                        mimeType = mimeType,
+                        mimeType = resolvedMime,
                         sizeBytes = totalBytes,
                         durationMs = durationMs,
                         durationMinutes = durationMins

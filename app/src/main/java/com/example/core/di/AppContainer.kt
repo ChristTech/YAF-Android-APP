@@ -41,6 +41,7 @@ interface AppContainer {
     val spiritualResourceRepository: SpiritualResourceRepository
     val bibleRepository: com.example.data.repository.BibleRepository
     val notificationService: com.example.core.notification.FellowshipNotificationService
+    val updateManager: com.example.core.update.GitHubUpdateManager
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -161,5 +162,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             notificationDao = database.notificationDao(),
             cloudRepository = gideonitesCloudRepository
         )
+    }
+
+    override val updateManager: com.example.core.update.GitHubUpdateManager by lazy {
+        com.example.core.update.GitHubUpdateManager(context = context.applicationContext)
     }
 }

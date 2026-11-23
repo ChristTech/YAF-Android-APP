@@ -18,6 +18,7 @@ object DatabasePrepopulator {
     const val OFFICIAL_ADMIN_ID = "user-admin-01"
     const val OFFICIAL_ADMIN_EMAIL = "admin@youthalive.org"
     const val OFFICIAL_ADMIN_NAME = "Admin"
+    const val OFFICIAL_ADMIN_ADDRESS = "Living Faith Church Youth Alive Fellowship Secretariat"
 
     val RETIRED_DEMO_USER_IDS = setOf(
         "user-exco-01",
@@ -79,7 +80,7 @@ object DatabasePrepopulator {
             status = AccountStatus.APPROVED,
             dateOfBirth = "",
             gender = Gender.PREFER_NOT_TO_SAY,
-            address = "ECWA Youth Alive Fellowship Secretariat",
+            address = OFFICIAL_ADMIN_ADDRESS,
             department = DepartmentType.GENERAL,
             fellowshipGroup = "Central Administration",
             emergencyContactName = "",
@@ -94,7 +95,9 @@ object DatabasePrepopulator {
             } else if (existingAdmin.fullName != OFFICIAL_ADMIN_NAME ||
                 existingAdmin.role != UserRole.ADMINISTRATOR ||
                 existingAdmin.status != AccountStatus.APPROVED ||
-                existingAdmin.emergencyContactName.isNotBlank()
+                existingAdmin.emergencyContactName.isNotBlank() ||
+                existingAdmin.address.contains("ECWA", ignoreCase = true) ||
+                existingAdmin.address.isBlank()
             ) {
                 userDao.updateUser(
                     existingAdmin.copy(
@@ -103,7 +106,7 @@ object DatabasePrepopulator {
                         status = AccountStatus.APPROVED,
                         dateOfBirth = "",
                         gender = Gender.PREFER_NOT_TO_SAY,
-                        address = "ECWA Youth Alive Fellowship Secretariat",
+                        address = OFFICIAL_ADMIN_ADDRESS,
                         fellowshipGroup = "Central Administration",
                         emergencyContactName = "",
                         emergencyContactPhone = "",

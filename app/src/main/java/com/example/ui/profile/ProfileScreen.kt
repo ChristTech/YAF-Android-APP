@@ -84,13 +84,15 @@ import com.example.ui.theme.FlameGoldAccent
 import com.example.ui.theme.FlameRedPrimary
 import com.example.ui.theme.GlobeBlack
 import com.example.ui.theme.ShieldSilver
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel,
     session: SessionEntity,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    updateManager: com.example.core.update.GitHubUpdateManager? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -273,7 +275,10 @@ fun ProfileScreen(
                             ProfileDetailRow("Official Contact Line", currentUser?.phone.orEmpty().ifBlank { "+2348011223344" })
                             ProfileDetailRow(
                                 "Secretariat / Office",
-                                currentUser?.address.orEmpty().ifBlank { "ECWA Youth Alive Fellowship Secretariat" }
+                                currentUser?.address
+                                    ?.replace("ECWA", "Living Faith Church", ignoreCase = true)
+                                    .orEmpty()
+                                    .ifBlank { "Living Faith Church Youth Alive Fellowship Secretariat" }
                             )
                         } else {
                             ProfileDetailRow("Phone Number", currentUser?.phone.orEmpty().ifBlank { "Not specified" })
@@ -412,6 +417,102 @@ fun ProfileScreen(
                                 onCheckedChange = { com.example.ui.theme.ThemeManager.setDark(it) },
                                 modifier = Modifier.testTag("switch_dark_mode")
                             )
+                        }
+                    }
+                }
+            }
+
+            // App Version & GitHub Releases Update Card
+            if (updateManager != null) {
+                item {
+                    val context = LocalContext.current
+                    val updateScope = androidx.compose.runtime.rememberCoroutineScope()
+                    val updateState by updateManager.state.collectAsState()
+
+                    Card(
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("card_app_updates")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "App Version & Updates",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = GlobeBlack
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Installed: v${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Source: github.com/${com.example.core.update.AppUpdateChecker.GITHUB_OWNER}/${com.example.core.update.AppUpdateChecker.GITHUB_REPO}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            val statusText = when (val st = updateState) {
+                                is com.example.core.update.UpdateCheckState.Checking -> "Checking GitHub Releases..."
+                                is com.example.core.update.UpdateCheckState.UpToDate ->
+                                    st.message ?: "You are on the latest version (v${st.currentVersion})."
+                                is com.example.core.update.UpdateCheckState.UpdateAvailable ->
+                                    "Update available: v${st.release.latestVersion} (${st.release.releaseTitle})"
+                                is com.example.core.update.UpdateCheckState.Error -> st.message
+                                else -> null
+                            }
+                            if (!statusText.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = when (updateState) {
+                                            is com.example.core.update.UpdateCheckState.UpdateAvailable -> FlameRedPrimary
+                                            is com.example.core.update.UpdateCheckState.Error -> MaterialTheme.colorScheme.error
+                                            else -> Color(0xFF16A34A)
+                                        }
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        updateScope.launch {
+                                            updateManager.checkForUpdates(manual = true)
+                                        }
+                                    },
+                                    enabled = updateState !is com.example.core.update.UpdateCheckState.Checking,
+                                    colors = ButtonDefaults.buttonColors(containerColor = FlameRedPrimary),
+                                    modifier = Modifier.weight(1f).testTag("btn_check_github_updates")
+                                ) {
+                                    Text(
+                                        text = if (updateState is com.example.core.update.UpdateCheckState.Checking) {
+                                            "Checking..."
+                                        } else {
+                                            "Check for Updates"
+                                        },
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        updateManager.openDownloadInBrowser(
+                                            context = context,
+                                            url = com.example.core.update.AppUpdateChecker.GITHUB_RELEASES_PAGE
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("btn_open_github_releases")
+                                ) {
+                                    Text("GitHub Releases", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
                 }

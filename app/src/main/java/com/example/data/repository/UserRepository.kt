@@ -148,7 +148,9 @@ class UserRepositoryImpl(
                 existingAdmin.fullName != DatabasePrepopulator.OFFICIAL_ADMIN_NAME ||
                 existingAdmin.role != UserRole.ADMINISTRATOR ||
                 existingAdmin.status != AccountStatus.APPROVED ||
-                existingAdmin.emergencyContactName.isNotBlank()
+                existingAdmin.emergencyContactName.isNotBlank() ||
+                existingAdmin.address.contains("ECWA", ignoreCase = true) ||
+                existingAdmin.address.isBlank()
 
             val finalAdmin = if (needsInstitutionalCleanup) {
                 val fixed = existingAdmin.copy(
@@ -157,8 +159,11 @@ class UserRepositoryImpl(
                     status = AccountStatus.APPROVED,
                     dateOfBirth = "",
                     gender = Gender.PREFER_NOT_TO_SAY,
-                    address = if (existingAdmin.address == "12 Cathedral Way, Lagos" || existingAdmin.address.isBlank()) {
-                        "ECWA Youth Alive Fellowship Secretariat"
+                    address = if (existingAdmin.address == "12 Cathedral Way, Lagos" ||
+                        existingAdmin.address.isBlank() ||
+                        existingAdmin.address.contains("ECWA", ignoreCase = true)
+                    ) {
+                        DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS
                     } else {
                         existingAdmin.address
                     },
@@ -194,7 +199,7 @@ class UserRepositoryImpl(
             status = AccountStatus.APPROVED,
             dateOfBirth = "",
             gender = Gender.PREFER_NOT_TO_SAY,
-            address = "ECWA Youth Alive Fellowship Secretariat",
+            address = DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS,
             department = DepartmentType.GENERAL,
             fellowshipGroup = "Central Administration",
             emergencyContactName = "",
@@ -270,7 +275,11 @@ class UserRepositoryImpl(
                 salt = profile.salt?.takeIf { it.isNotBlank() } ?: fallbackSalt,
                 role = if (isOfficialAdminProfile) UserRole.ADMINISTRATOR else resolvedRole,
                 status = if (isOfficialAdminProfile) AccountStatus.APPROVED else resolvedStatus,
-                address = if (isOfficialAdminProfile) "ECWA Youth Alive Fellowship Secretariat" else (existing?.address ?: ""),
+                address = if (isOfficialAdminProfile) {
+                    DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS
+                } else {
+                    existing?.address?.replace("ECWA", "Living Faith Church", ignoreCase = true) ?: ""
+                },
                 department = resolvedDept,
                 fellowshipGroup = if (isOfficialAdminProfile) "Central Administration" else (profile.fellowshipGroup ?: existing?.fellowshipGroup ?: ""),
                 emergencyContactName = if (isOfficialAdminProfile) "" else (profile.emergencyContactName ?: existing?.emergencyContactName ?: ""),

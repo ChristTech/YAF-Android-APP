@@ -1178,58 +1178,72 @@ fun PublishResourceDialog(
         }
     }
 
+    val handleSelectedAudioUri: (android.net.Uri) -> Unit = { uri ->
+        isImportingAudio = true
+        localValidationError = null
+        coroutineScope.launch {
+            val res = SpiritualResourceRepositoryImpl.importAudioFromContentUri(context, uri.toString())
+            res.onSuccess { draft ->
+                discardStagedDraft(attachedAudioDraft)
+                attachedAudioDraft = draft
+                existingAudioRemoved = false
+                durationText = draft.durationMinutes.toString()
+                if (title.isBlank()) {
+                    title = draft.fileName.substringBeforeLast('.')
+                        .replace('_', ' ')
+                        .replace('-', ' ')
+                        .trim()
+                }
+                localValidationError = null
+            }.onFailure { ex ->
+                localValidationError = ex.message ?: "Could not import selected audio file."
+            }
+            isImportingAudio = false
+        }
+    }
+
+    // Opens Android's Music / Audio / Voice Recorder / Files audio picker directly
     val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) handleSelectedAudioUri(uri)
+    }
+
+    // Fallback unrestricted file browser for OEMs/Drive/WhatsApp where audio MIME filters grey out .m4a/.opus/.mp3 files
+    val audioBroadPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
-            isImportingAudio = true
-            localValidationError = null
-            coroutineScope.launch {
-                val res = SpiritualResourceRepositoryImpl.importAudioFromContentUri(context, uri.toString())
-                res.onSuccess { draft ->
-                    discardStagedDraft(attachedAudioDraft)
-                    attachedAudioDraft = draft
-                    existingAudioRemoved = false
-                    durationText = draft.durationMinutes.toString()
-                    if (title.isBlank()) {
-                        title = draft.fileName.substringBeforeLast('.')
-                            .replace('_', ' ')
-                            .replace('-', ' ')
-                            .trim()
-                    }
-                    localValidationError = null
-                }.onFailure { ex ->
-                    localValidationError = ex.message ?: "Could not import selected audio file."
-                }
-                isImportingAudio = false
-            }
-        }
+        if (uri != null) handleSelectedAudioUri(uri)
     }
 
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            coroutineScope.launch {
-                val res = BibleDocumentExtractor.extractDocumentTextForResource(context, uri)
-                res.onSuccess { (extractedTitle, extractedBody) ->
-                    attachedFileName = BibleDocumentExtractor.resolveFileName(context, uri)
-                    if (title.isBlank()) {
-                        title = extractedTitle
-                    }
-                    if (extractedBody.isNotBlank()) {
-                        body = extractedBody.take(11500)
-                        if (summary.isBlank()) {
-                            summary = extractedBody.lineSequence()
-                                .map { it.trim() }
-                                .firstOrNull { it.length >= 20 }
-                                ?.take(180)
-                                ?: extractedBody.take(180)
+            if (isSermon && SpiritualResourceRepositoryImpl.isExplicitAudioFile(context, uri)) {
+                handleSelectedAudioUri(uri)
+            } else {
+                coroutineScope.launch {
+                    val res = BibleDocumentExtractor.extractDocumentTextForResource(context, uri)
+                    res.onSuccess { (extractedTitle, extractedBody) ->
+                        attachedFileName = BibleDocumentExtractor.resolveFileName(context, uri)
+                        if (title.isBlank()) {
+                            title = extractedTitle
                         }
+                        if (extractedBody.isNotBlank()) {
+                            body = extractedBody.take(11500)
+                            if (summary.isBlank()) {
+                                summary = extractedBody.lineSequence()
+                                    .map { it.trim() }
+                                    .firstOrNull { it.length >= 20 }
+                                    ?.take(180)
+                                    ?: extractedBody.take(180)
+                            }
+                        }
+                        localValidationError = null
+                    }.onFailure { ex ->
+                        localValidationError = "Could not import document: ${ex.message}"
                     }
-                    localValidationError = null
-                }.onFailure { ex ->
-                    localValidationError = "Could not import document: ${ex.message}"
                 }
             }
         }
@@ -1305,7 +1319,7 @@ fun PublishResourceDialog(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(
-                                onClick = { audioPickerLauncher.launch(arrayOf("audio/*")) },
+                                onClick = { audioPickerLauncher.launch("audio/*") },
                                 enabled = !isImportingAudio,
                                 colors = ButtonDefaults.buttonColors(containerColor = FlameRedPrimary),
                                 shape = RoundedCornerShape(10.dp),
@@ -1326,12 +1340,28 @@ fun PublishResourceDialog(
                                         text = if (attachedAudioDraft != null || (!existingAudioRemoved && editingResource?.hasAudio == true)) {
                                             "Replace Selected Audio File"
                                         } else {
-                                            "Select Audio File (.mp3, .m4a, .wav)"
+                                            "Select Audio File (.mp3, .m4a, .aac, .wav)"
                                         },
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = { audioBroadPickerLauncher.launch(arrayOf("*/*")) },
+                                enabled = !isImportingAudio,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("btn_browse_all_audio_folders")
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(15.dp), tint = FlameRedPrimary)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Browse All Folders / Voice Notes (Downloads, WhatsApp, Drive)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = FlameRedPrimary
+                                )
                             }
 
                             val activeDraft = attachedAudioDraft
@@ -1421,7 +1451,11 @@ fun PublishResourceDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = attachedFileName?.let { "Imported Notes: $it (Tap to Change)" }
-                                ?: "Import Sermon Notes / Devotional (.pdf / .epub / .txt)",
+                                ?: if (isSermon) {
+                                    "Optional: Import Sermon Notes (.pdf / .epub / .txt)"
+                                } else {
+                                    "Import Devotional / Study Notes (.pdf / .epub / .txt)"
+                                },
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
