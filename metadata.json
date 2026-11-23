@@ -1,0 +1,6 @@
+{
+  "name": "The Gideonites - The Youth Alive Fellowship",
+  "description": "Central youth platform for The Gideonites - The Youth Alive Fellowship | Kingdom Giants programmes, daily scriptures, announcements, records, games, and spiritual engagement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

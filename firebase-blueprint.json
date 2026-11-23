@@ -1,0 +1,760 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Cross-platform youth member profile with preferred language, English override state, and role.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user."
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Full display name of the youth member."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the youth member (PII isolated to owner/admin)."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone number of the youth member."
+        },
+        "profilePhotoUri": {
+          "type": "string",
+          "description": "Optional URI or URL of the user's attached profile picture."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["GUEST", "YOUTH_MEMBER", "DEPARTMENT_LEADER", "YOUTH_EXECUTIVE", "ADMINISTRATOR"],
+          "description": "Fellowship role within The Gideonites."
+        },
+        "department": {
+          "type": "string",
+          "description": "Assigned ministry unit or department."
+        },
+        "fellowshipGroup": {
+          "type": "string",
+          "description": "Assigned cell or fellowship group."
+        },
+        "preferredLanguage": {
+          "type": "string",
+          "enum": ["en", "yo", "ha", "ig"],
+          "description": "Default language selected on signup."
+        },
+        "englishOverride": {
+          "type": "boolean",
+          "description": "Whether the quick English toggle is currently active."
+        },
+        "xpPoints": {
+          "type": "integer",
+          "description": "Accumulated quiz and fellowship XP points."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of profile creation (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last profile update (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "fullName", "email", "role", "department", "preferredLanguage", "englishOverride", "xpPoints", "createdAt", "updatedAt"]
+    },
+    "DailyScriptureDoc": {
+      "title": "DailyScriptureDoc",
+      "description": "Cross-platform Scripture for the Day with multilingual (EN/YO/HA/IG) verse text and reflection.",
+      "type": "object",
+      "properties": {
+        "authorId": {
+          "type": "string",
+          "description": "UID of the administrator/leader who published the scripture."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Display name of the publisher."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier for query alignment."
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "ISO date key (e.g. 2026-10-25)."
+        },
+        "referenceEn": {
+          "type": "string",
+          "description": "Scripture reference in English."
+        },
+        "referenceYo": {
+          "type": "string",
+          "description": "Scripture reference in Yoruba."
+        },
+        "referenceHa": {
+          "type": "string",
+          "description": "Scripture reference in Hausa."
+        },
+        "referenceIg": {
+          "type": "string",
+          "description": "Scripture reference in Igbo."
+        },
+        "verseTextEn": {
+          "type": "string",
+          "description": "Scripture text in English (KJV)."
+        },
+        "verseTextYo": {
+          "type": "string",
+          "description": "Scripture text in Yoruba (Bibeli Mimo)."
+        },
+        "verseTextHa": {
+          "type": "string",
+          "description": "Scripture text in Hausa (Littafi Mai Tsarki)."
+        },
+        "verseTextIg": {
+          "type": "string",
+          "description": "Scripture text in Igbo (Baibul Nso)."
+        },
+        "reflectionEn": {
+          "type": "string",
+          "description": "Youth reflection / charge in English."
+        },
+        "reflectionYo": {
+          "type": "string",
+          "description": "Youth reflection / charge in Yoruba."
+        },
+        "reflectionHa": {
+          "type": "string",
+          "description": "Youth reflection / charge in Hausa."
+        },
+        "reflectionIg": {
+          "type": "string",
+          "description": "Youth reflection / charge in Igbo."
+        },
+        "prayerPromptEn": {
+          "type": "string",
+          "description": "Prayer focus prompt."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["authorId", "authorName", "fellowshipId", "dateKey", "referenceEn", "verseTextEn", "reflectionEn", "prayerPromptEn", "createdAt", "updatedAt"]
+    },
+    "YouthProgrammeDoc": {
+      "title": "YouthProgrammeDoc",
+      "description": "Cross-platform Upcoming Youth Programme with multilingual (EN/YO/HA/IG) titles and descriptions.",
+      "type": "object",
+      "properties": {
+        "createdById": {
+          "type": "string",
+          "description": "UID of the creator."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier for query alignment."
+        },
+        "titleEn": {
+          "type": "string",
+          "description": "Programme title in English."
+        },
+        "titleYo": {
+          "type": "string",
+          "description": "Programme title in Yoruba."
+        },
+        "titleHa": {
+          "type": "string",
+          "description": "Programme title in Hausa."
+        },
+        "titleIg": {
+          "type": "string",
+          "description": "Programme title in Igbo."
+        },
+        "descriptionEn": {
+          "type": "string",
+          "description": "Programme description in English."
+        },
+        "descriptionYo": {
+          "type": "string",
+          "description": "Programme description in Yoruba."
+        },
+        "descriptionHa": {
+          "type": "string",
+          "description": "Programme description in Hausa."
+        },
+        "descriptionIg": {
+          "type": "string",
+          "description": "Programme description in Igbo."
+        },
+        "category": {
+          "type": "string",
+          "description": "Programme category."
+        },
+        "venue": {
+          "type": "string",
+          "description": "Physical or virtual venue."
+        },
+        "startDateMillis": {
+          "type": "integer",
+          "description": "Start timestamp in epoch milliseconds."
+        },
+        "endDateMillis": {
+          "type": "integer",
+          "description": "End timestamp in epoch milliseconds."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"],
+          "description": "Lifecycle status of the programme."
+        },
+        "registeredCount": {
+          "type": "integer",
+          "description": "Number of registered participants."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["createdById", "fellowshipId", "titleEn", "descriptionEn", "category", "venue", "startDateMillis", "endDateMillis", "status", "registeredCount", "createdAt", "updatedAt"]
+    },
+    "CloudQuizSessionDoc": {
+      "title": "CloudQuizSessionDoc",
+      "description": "Cross-platform Live Multiplayer Quiz Arena session shared across Android, iOS, and Web browsers.",
+      "type": "object",
+      "properties": {
+        "hostId": {
+          "type": "string",
+          "description": "UID of the quiz host."
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the quiz host."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier for query alignment."
+        },
+        "roomPin": {
+          "type": "string",
+          "description": "6-character alphanumeric room PIN."
+        },
+        "titleEn": {
+          "type": "string",
+          "description": "Quiz title in English."
+        },
+        "titleYo": {
+          "type": "string",
+          "description": "Quiz title in Yoruba."
+        },
+        "titleHa": {
+          "type": "string",
+          "description": "Quiz title in Hausa."
+        },
+        "titleIg": {
+          "type": "string",
+          "description": "Quiz title in Igbo."
+        },
+        "gameType": {
+          "type": "string",
+          "description": "Game type identifier."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "SCHEDULED", "ACTIVE", "COMPLETED", "CANCELLED"],
+          "description": "Live session state or saved draft."
+        },
+        "timeLimitPerQuestionSeconds": {
+          "type": "integer",
+          "description": "Time limit per question in seconds."
+        },
+        "leaderboardDurationSeconds": {
+          "type": "integer",
+          "description": "Intermission leaderboard duration in seconds."
+        },
+        "currentQuestionIndex": {
+          "type": "integer",
+          "description": "Active 0-based question index."
+        },
+        "currentSubstate": {
+          "type": "string",
+          "enum": ["WAITING_TO_START", "QUESTION_OPEN", "LEADERBOARD"],
+          "description": "Synchronized round substate across clients."
+        },
+        "currentQuestionDeadline": {
+          "type": "integer",
+          "description": "Epoch milliseconds when current question closes."
+        },
+        "leaderboardDeadline": {
+          "type": "integer",
+          "description": "Epoch milliseconds when intermission leaderboard advances."
+        },
+        "baseScorePerQuestion": {
+          "type": "integer",
+          "description": "Base points awarded per correct answer."
+        },
+        "speedBonusEnabled": {
+          "type": "boolean",
+          "description": "Whether speed bonus points are enabled."
+        },
+        "maxSpeedBonus": {
+          "type": "integer",
+          "description": "Maximum speed bonus points per question."
+        },
+        "penaltyForIncorrect": {
+          "type": "boolean",
+          "description": "Whether wrong answers incur a point penalty."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Total questions in the session."
+        },
+        "participantCount": {
+          "type": "integer",
+          "description": "Count of active players across Android, iOS, and Web."
+        },
+        "questionsJson": {
+          "type": "string",
+          "description": "JSON array of session questions."
+        },
+        "participantsJson": {
+          "type": "string",
+          "description": "JSON array of participant scores and standings."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["hostId", "hostName", "fellowshipId", "roomPin", "titleEn", "gameType", "status", "currentQuestionIndex", "totalQuestions", "participantCount", "createdAt", "updatedAt"]
+    },
+    "GameQuizDoc": {
+      "title": "GameQuizDoc",
+      "description": "Cross-platform Solo Scripture Quiz catalog synced across Android, iOS, and Web.",
+      "type": "object",
+      "properties": {
+        "createdById": {
+          "type": "string",
+          "description": "UID of the administrator/executive who created the quiz."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "title": {
+          "type": "string",
+          "description": "Quiz title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Quiz description."
+        },
+        "category": {
+          "type": "string",
+          "description": "Quiz category enum name."
+        },
+        "questionsJson": {
+          "type": "string",
+          "description": "JSON array of quiz questions."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Question count."
+        },
+        "timeLimitSeconds": {
+          "type": "integer",
+          "description": "Total time limit in seconds."
+        },
+        "difficulty": {
+          "type": "string",
+          "description": "Difficulty label."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        }
+      },
+      "required": ["createdById", "fellowshipId", "title", "category", "questionsJson", "totalQuestions", "timeLimitSeconds", "difficulty", "createdAt", "updatedAt"]
+    },
+    "GameScoreDoc": {
+      "title": "GameScoreDoc",
+      "description": "Cross-platform Global Leaderboard score entry synced across Android, iOS, and Web.",
+      "type": "object",
+      "properties": {
+        "quizId": {
+          "type": "string",
+          "description": "Quiz or session identifier."
+        },
+        "quizTitle": {
+          "type": "string",
+          "description": "Display title of the quiz or showdown."
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the player."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Display name of the player."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Points earned."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Maximum possible points or question scale."
+        },
+        "timeTakenSeconds": {
+          "type": "integer",
+          "description": "Elapsed completion time in seconds."
+        },
+        "completedAt": {
+          "type": "integer",
+          "description": "Epoch milliseconds when completed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        }
+      },
+      "required": ["quizId", "quizTitle", "userId", "userName", "fellowshipId", "score", "totalQuestions", "timeTakenSeconds", "completedAt", "createdAt", "updatedAt"]
+    },
+    "CommunityPostDoc": {
+      "title": "CommunityPostDoc",
+      "description": "Cross-platform Youth Forum post synced across Android, iOS, and Web.",
+      "type": "object",
+      "properties": {
+        "authorId": {
+          "type": "string",
+          "description": "UID of the post author."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Display name of the post author."
+        },
+        "authorRole": {
+          "type": "string",
+          "description": "Role label of the post author."
+        },
+        "authorAvatarUri": {
+          "type": "string",
+          "description": "Optional URI/URL of the author's profile avatar."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "category": {
+          "type": "string",
+          "description": "Forum category."
+        },
+        "title": {
+          "type": "string",
+          "description": "Discussion title."
+        },
+        "content": {
+          "type": "string",
+          "description": "Discussion body text."
+        },
+        "attachmentPhotoUri": {
+          "type": "string",
+          "description": "Optional attached photo or flyer URI."
+        },
+        "likesCount": {
+          "type": "integer",
+          "description": "Number of likes."
+        },
+        "commentsCount": {
+          "type": "integer",
+          "description": "Number of replies."
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "Whether the post is pinned by leadership."
+        },
+        "isFlagged": {
+          "type": "boolean",
+          "description": "Whether the post is flagged for moderation."
+        },
+        "isHidden": {
+          "type": "boolean",
+          "description": "Whether the post is hidden by moderation."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["authorId", "authorName", "authorRole", "fellowshipId", "category", "title", "content", "likesCount", "commentsCount", "isPinned", "isFlagged", "isHidden", "createdAt", "updatedAt"]
+    },
+    "ExecutiveInquiryDoc": {
+      "title": "ExecutiveInquiryDoc",
+      "description": "Direct Pastoral & Executive Contact inquiry with two-way leadership response.",
+      "type": "object",
+      "properties": {
+        "senderId": {
+          "type": "string",
+          "description": "UID of the sender."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of the sender (or Anonymous Member when isAnonymous is true)."
+        },
+        "senderRole": {
+          "type": "string",
+          "description": "Role of the sender."
+        },
+        "senderAvatarUri": {
+          "type": "string",
+          "description": "Optional avatar URI of the sender."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "isAnonymous": {
+          "type": "boolean",
+          "description": "Whether the sender requested anonymity."
+        },
+        "topic": {
+          "type": "string",
+          "description": "Counseling or pastoral inquiry topic."
+        },
+        "message": {
+          "type": "string",
+          "description": "Confidential inquiry content."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "IN_PROGRESS", "RESOLVED"],
+          "description": "Current resolution state."
+        },
+        "responseMessage": {
+          "type": "string",
+          "description": "Leadership or pastoral reply text."
+        },
+        "respondedByName": {
+          "type": "string",
+          "description": "Name of the executive/admin who replied."
+        },
+        "respondedByRole": {
+          "type": "string",
+          "description": "Role of the responder."
+        },
+        "respondedAt": {
+          "type": "integer",
+          "description": "Epoch milliseconds of response."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["senderId", "senderName", "senderRole", "fellowshipId", "isAnonymous", "topic", "message", "status", "createdAt", "updatedAt"]
+    },
+    "FellowshipNotificationDoc": {
+      "title": "FellowshipNotificationDoc",
+      "description": "Cross-device real-time notification broadcast for programmes, registrations, announcements, forum posts, comments, scriptures, and live games.",
+      "type": "object",
+      "properties": {
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "title": {
+          "type": "string",
+          "description": "Notification title."
+        },
+        "message": {
+          "type": "string",
+          "description": "Notification body message."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ANNOUNCEMENT", "EVENT", "COMMUNITY_POST", "GAME_TIME", "REPORT_REVIEW", "GENERAL"],
+          "description": "Notification category type."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Name of the sender or author."
+        },
+        "authorRole": {
+          "type": "string",
+          "description": "Role of the sender or author."
+        },
+        "senderDeviceId": {
+          "type": "string",
+          "description": "Unique device installation ID that originated the notification."
+        },
+        "recipientUserId": {
+          "type": "string",
+          "description": "Optional target user ID if directed to a specific user."
+        },
+        "actionDeepLink": {
+          "type": "string",
+          "description": "Optional in-app deep link target."
+        },
+        "isUrgent": {
+          "type": "boolean",
+          "description": "Whether this alert is high/urgent priority."
+        },
+        "timestampMillis": {
+          "type": "integer",
+          "description": "Epoch milliseconds when the notification was triggered."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        }
+      },
+      "required": ["fellowshipId", "title", "message", "type", "authorName", "authorRole", "isUrgent", "timestampMillis", "createdAt", "updatedAt"]
+    },
+    "SermonAudioChunkDoc": {
+      "title": "SermonAudioChunkDoc",
+      "description": "Chunked Base64 audio payload for the single active uploaded audio sermon.",
+      "type": "object",
+      "properties": {
+        "audioCloudId": {
+          "type": "string",
+          "description": "Identifier linking chunks to the active audio sermon."
+        },
+        "fellowshipId": {
+          "type": "string",
+          "enum": ["GIDEONITES"],
+          "description": "Fellowship scope identifier."
+        },
+        "uploadedById": {
+          "type": "string",
+          "description": "UID of the uploader."
+        },
+        "chunkIndex": {
+          "type": "integer",
+          "description": "0-based sequential chunk index."
+        },
+        "totalChunks": {
+          "type": "integer",
+          "description": "Total chunk count for reassembly."
+        },
+        "dataBase64": {
+          "type": "string",
+          "description": "Base64-encoded binary slice of the audio sermon."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["audioCloudId", "fellowshipId", "uploadedById", "chunkIndex", "totalChunks", "dataBase64", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores cross-platform member profiles, signup preferred language, and XP."
+    },
+    "/daily_scriptures/{scriptureId}": {
+      "schema": { "$ref": "#/entities/DailyScriptureDoc" },
+      "description": "Stores multilingual Scripture for the Day broadcasts synced to Android, iOS, and Web."
+    },
+    "/programmes/{programmeId}": {
+      "schema": { "$ref": "#/entities/YouthProgrammeDoc" },
+      "description": "Stores multilingual upcoming youth programmes and live RSVP counts."
+    },
+    "/quiz_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/CloudQuizSessionDoc" },
+      "description": "Stores live multiplayer quiz sessions synced across Android, iOS, and Web."
+    },
+    "/community_posts/{postId}": {
+      "schema": { "$ref": "#/entities/CommunityPostDoc" },
+      "description": "Stores Youth Forum discussions, attachments, likes, and moderation flags."
+    },
+    "/executive_inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/ExecutiveInquiryDoc" },
+      "description": "Stores Direct Pastoral & Executive Contact inquiries and leadership responses."
+    },
+    "/fellowship_notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/FellowshipNotificationDoc" },
+      "description": "Stores real-time cross-device notifications synced across all connected devices."
+    },
+    "/game_quizzes/{quizId}": {
+      "schema": { "$ref": "#/entities/GameQuizDoc" },
+      "description": "Stores featured solo Scripture quizzes across Android, iOS, and Web."
+    },
+    "/game_scores/{scoreId}": {
+      "schema": { "$ref": "#/entities/GameScoreDoc" },
+      "description": "Stores Youth Global Leaderboard scores across Android, iOS, and Web."
+    },
+    "/sermon_audio_chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/SermonAudioChunkDoc" },
+      "description": "Stores chunked audio payload for the active uploaded audio sermon."
+    }
+  }
+}

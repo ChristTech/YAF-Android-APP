@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">The Gideonites - The Youth Alive Fellowship</string>
+    <string name="tagline">The Gideonites • Àwọn Òkìkí Ìjọba Ọlọ́run</string>
+    <string name="nav_programmes">Ilé</string>
+    <string name="nav_community">Àwùjọ</string>
+    <string name="nav_games">Àwọn Eré</string>
+    <string name="nav_alerts">Ìkìlọ̀ &amp; Ìkéde</string>
+    <string name="nav_spiritual">Ẹ̀mí</string>
+    <string name="nav_profile">Ìrísí Mi</string>
+    <string name="giving_title">Ìdámẹ́wàá &amp; Ọrẹ</string>
+    <string name="attendance_title">Àkọsílẹ̀ Ìpàdé</string>
+    <string name="units_title">Ẹ̀ka Àwọn Ọ̀dọ́</string>
+    <string name="welcome_youth">Káàbọ̀, Ọ̀dọ́ Olókìkí</string>
+</resources>

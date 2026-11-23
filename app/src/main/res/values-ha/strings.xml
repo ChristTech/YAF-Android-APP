@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">The Gideonites - The Youth Alive Fellowship</string>
+    <string name="tagline">The Gideonites • Manyan Masarautar</string>
+    <string name="nav_programmes">Gida</string>
+    <string name="nav_community">Al\'umma</string>
+    <string name="nav_games">Wasanni</string>
+    <string name="nav_alerts">Sanarwa</string>
+    <string name="nav_spiritual">Ruhaniya</string>
+    <string name="nav_profile">Bayanai Na</string>
+    <string name="giving_title">Ba da Gudummawa</string>
+    <string name="attendance_title">Rajistar Halarta</string>
+    <string name="units_title">Rukunan Matasa</string>
+    <string name="welcome_youth">Barka da Zuwa, Matashi</string>
+</resources>

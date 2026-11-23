@@ -1,0 +1,517 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Default-Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email' in request.auth.token &&
+         request.auth.token.email == 'adebisivictor39@gmail.com' &&
+         'email_verified' in request.auth.token &&
+         request.auth.token.email_verified == true)
+      );
+    }
+
+    function isLeadership() {
+      return isAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['ADMINISTRATOR', 'YOUTH_EXECUTIVE']
+      );
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    // 1. UserProfile Validation Helper
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+             isOptionalString(data, 'phone', 30) &&
+             isOptionalString(data, 'profilePhotoUri', 350000) &&
+             isOptionalString(data, 'passwordHash', 256) &&
+             isOptionalString(data, 'salt', 128) &&
+             isOptionalString(data, 'status', 30) &&
+             isOptionalString(data, 'emergencyContactName', 100) &&
+             isOptionalString(data, 'emergencyContactPhone', 30) &&
+             isOptionalString(data, 'emergencyContactRelationship', 60) &&
+             data.role is string && data.role in ['GUEST', 'YOUTH_MEMBER', 'DEPARTMENT_LEADER', 'YOUTH_EXECUTIVE', 'ADMINISTRATOR'] &&
+             data.department is string && data.department.size() >= 1 && data.department.size() <= 50 &&
+             isOptionalString(data, 'fellowshipGroup', 100) &&
+             data.preferredLanguage is string && data.preferredLanguage in ['en', 'yo', 'ha', 'ig'] &&
+             data.englishOverride is bool &&
+             data.xpPoints is int && data.xpPoints >= 0 && data.xpPoints <= 10000000;
+    }
+
+    // 2. DailyScriptureDoc Validation Helper
+    function isValidDailyScripture(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.dateKey is string && data.dateKey.size() >= 1 && data.dateKey.size() <= 40 &&
+             data.referenceEn is string && data.referenceEn.size() >= 1 && data.referenceEn.size() <= 120 &&
+             isOptionalString(data, 'referenceYo', 120) &&
+             isOptionalString(data, 'referenceHa', 120) &&
+             isOptionalString(data, 'referenceIg', 120) &&
+             data.verseTextEn is string && data.verseTextEn.size() >= 1 && data.verseTextEn.size() <= 2000 &&
+             isOptionalString(data, 'verseTextYo', 2000) &&
+             isOptionalString(data, 'verseTextHa', 2000) &&
+             isOptionalString(data, 'verseTextIg', 2000) &&
+             data.reflectionEn is string && data.reflectionEn.size() >= 1 && data.reflectionEn.size() <= 3000 &&
+             isOptionalString(data, 'reflectionYo', 3000) &&
+             isOptionalString(data, 'reflectionHa', 3000) &&
+             isOptionalString(data, 'reflectionIg', 3000) &&
+             data.prayerPromptEn is string && data.prayerPromptEn.size() >= 1 && data.prayerPromptEn.size() <= 1000;
+    }
+
+    // 3. YouthProgrammeDoc Validation Helper
+    function isValidYouthProgramme(data) {
+      return data.createdById is string && data.createdById.size() >= 1 && data.createdById.size() <= 128 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.titleEn is string && data.titleEn.size() >= 2 && data.titleEn.size() <= 150 &&
+             isOptionalString(data, 'titleYo', 150) &&
+             isOptionalString(data, 'titleHa', 150) &&
+             isOptionalString(data, 'titleIg', 150) &&
+             data.descriptionEn is string && data.descriptionEn.size() >= 2 && data.descriptionEn.size() <= 2000 &&
+             isOptionalString(data, 'descriptionYo', 2000) &&
+             isOptionalString(data, 'descriptionHa', 2000) &&
+             isOptionalString(data, 'descriptionIg', 2000) &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 50 &&
+             data.venue is string && data.venue.size() >= 1 && data.venue.size() <= 200 &&
+             isOptionalString(data, 'speaker', 150) &&
+             isOptionalString(data, 'contactPerson', 150) &&
+             (!('participantLimit' in data) || data.participantLimit == null || (data.participantLimit is int && data.participantLimit >= 0 && data.participantLimit <= 100000)) &&
+             (!('isRegistrationEnabled' in data) || data.isRegistrationEnabled == null || data.isRegistrationEnabled is bool) &&
+             data.startDateMillis is int && data.startDateMillis > 0 &&
+             data.endDateMillis is int && data.endDateMillis >= data.startDateMillis &&
+             data.status is string && data.status in ['UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED'] &&
+             data.registeredCount is int && data.registeredCount >= 0 && data.registeredCount <= 100000 &&
+             isOptionalString(data, 'registrationsJson', 100000);
+    }
+
+    // 4. CloudQuizSessionDoc Validation Helper
+    function isValidCloudQuizSession(data) {
+      return data.hostId is string && data.hostId.size() >= 1 && data.hostId.size() <= 128 &&
+             data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 100 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.roomPin is string && data.roomPin.size() >= 4 && data.roomPin.size() <= 12 &&
+             data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 150 &&
+             isOptionalString(data, 'titleYo', 150) &&
+             isOptionalString(data, 'titleHa', 150) &&
+             isOptionalString(data, 'titleIg', 150) &&
+             isOptionalString(data, 'description', 1000) &&
+             data.gameType is string && data.gameType.size() >= 1 && data.gameType.size() <= 50 &&
+             data.status is string && data.status in ['DRAFT', 'SCHEDULED', 'ACTIVE', 'COMPLETED', 'CANCELLED'] &&
+             (!('scheduledStartTime' in data) || data.scheduledStartTime == null || (data.scheduledStartTime is int && data.scheduledStartTime >= 0)) &&
+             (!('timeLimitPerQuestionSeconds' in data) || data.timeLimitPerQuestionSeconds == null || (data.timeLimitPerQuestionSeconds is int && data.timeLimitPerQuestionSeconds >= 1 && data.timeLimitPerQuestionSeconds <= 600)) &&
+             (!('leaderboardDurationSeconds' in data) || data.leaderboardDurationSeconds == null || (data.leaderboardDurationSeconds is int && data.leaderboardDurationSeconds >= 1 && data.leaderboardDurationSeconds <= 600)) &&
+             (!('currentSubstate' in data) || data.currentSubstate == null || (data.currentSubstate is string && data.currentSubstate in ['WAITING_TO_START', 'QUESTION_OPEN', 'LEADERBOARD'])) &&
+             (!('currentQuestionDeadline' in data) || data.currentQuestionDeadline == null || (data.currentQuestionDeadline is int && data.currentQuestionDeadline >= 0)) &&
+             (!('leaderboardDeadline' in data) || data.leaderboardDeadline == null || (data.leaderboardDeadline is int && data.leaderboardDeadline >= 0)) &&
+             (!('baseScorePerQuestion' in data) || data.baseScorePerQuestion == null || (data.baseScorePerQuestion is int && data.baseScorePerQuestion >= 1 && data.baseScorePerQuestion <= 10000)) &&
+             (!('speedBonusEnabled' in data) || data.speedBonusEnabled == null || data.speedBonusEnabled is bool) &&
+             (!('maxSpeedBonus' in data) || data.maxSpeedBonus == null || (data.maxSpeedBonus is int && data.maxSpeedBonus >= 0 && data.maxSpeedBonus <= 5000)) &&
+             (!('penaltyForIncorrect' in data) || data.penaltyForIncorrect == null || data.penaltyForIncorrect is bool) &&
+             data.currentQuestionIndex is int && data.currentQuestionIndex >= 0 && data.currentQuestionIndex <= 500 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 500 &&
+             data.participantCount is int && data.participantCount >= 0 && data.participantCount <= 100000 &&
+             isOptionalString(data, 'questionsJson', 100000) &&
+             isOptionalString(data, 'participantsJson', 100000);
+    }
+
+    // 4b. GameQuizDoc Validation Helper
+    function isValidGameQuiz(data) {
+      return data.createdById is string && data.createdById.size() >= 1 && data.createdById.size() <= 128 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 150 &&
+             isOptionalString(data, 'description', 1000) &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 50 &&
+             data.questionsJson is string && data.questionsJson.size() >= 2 && data.questionsJson.size() <= 100000 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 500 &&
+             data.timeLimitSeconds is int && data.timeLimitSeconds >= 10 && data.timeLimitSeconds <= 7200 &&
+             data.difficulty is string && data.difficulty.size() >= 1 && data.difficulty.size() <= 40;
+    }
+
+    // 4c. GameScoreDoc Validation Helper
+    function isValidGameScore(data) {
+      return data.quizId is string && data.quizId.size() >= 1 && data.quizId.size() <= 128 &&
+             data.quizTitle is string && data.quizTitle.size() >= 1 && data.quizTitle.size() <= 150 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.score is int && data.score >= 0 && data.score <= 1000000 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 1000000 &&
+             data.timeTakenSeconds is int && data.timeTakenSeconds >= 0 && data.timeTakenSeconds <= 86400 &&
+             data.completedAt is int && data.completedAt >= 0;
+    }
+
+    // 5. CommunityPostDoc Validation Helper
+    function isValidCommunityPost(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             data.authorRole is string && data.authorRole.size() >= 1 && data.authorRole.size() <= 60 &&
+             isOptionalString(data, 'authorAvatarUri', 350000) &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 4000 &&
+             isOptionalString(data, 'attachmentPhotoUri', 350000) &&
+             isOptionalString(data, 'whatsappContact', 300) &&
+             isOptionalString(data, 'commentsJson', 350000) &&
+             data.likesCount is int && data.likesCount >= 0 && data.likesCount <= 1000000 &&
+             data.commentsCount is int && data.commentsCount <= 1000000 &&
+             data.isPinned is bool &&
+             data.isFlagged is bool &&
+             data.isHidden is bool;
+    }
+
+    // 6. ExecutiveInquiryDoc Validation Helper
+    function isValidExecutiveInquiry(data) {
+      return data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100 &&
+             data.senderRole is string && data.senderRole.size() >= 1 && data.senderRole.size() <= 60 &&
+             isOptionalString(data, 'senderAvatarUri', 350000) &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.isAnonymous is bool &&
+             data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 120 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 4000 &&
+             data.status is string && data.status in ['PENDING', 'IN_PROGRESS', 'RESOLVED'] &&
+             isOptionalString(data, 'responseMessage', 4000) &&
+             isOptionalString(data, 'respondedByName', 100) &&
+             isOptionalString(data, 'respondedByRole', 60) &&
+             (!('respondedAt' in data) || data.respondedAt == null || (data.respondedAt is int && data.respondedAt >= 0));
+    }
+
+    // 7. FellowshipNotificationDoc Validation Helper
+    function isValidFellowshipNotification(data) {
+      return data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 300 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 4000 &&
+             data.type is string && data.type in ['ANNOUNCEMENT', 'EVENT', 'COMMUNITY_POST', 'GAME_TIME', 'REPORT_REVIEW', 'GENERAL'] &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 150 &&
+             data.authorRole is string && data.authorRole.size() >= 1 && data.authorRole.size() <= 100 &&
+             isOptionalString(data, 'senderDeviceId', 128) &&
+             isOptionalString(data, 'recipientUserId', 128) &&
+             isOptionalString(data, 'actionDeepLink', 300) &&
+             data.isUrgent is bool &&
+             data.timestampMillis is int && data.timestampMillis >= 0;
+    }
+
+    // 8. SermonAudioChunkDoc Validation Helper
+    function isValidSermonAudioChunk(data) {
+      return data.audioCloudId is string && data.audioCloudId.size() >= 1 && data.audioCloudId.size() <= 128 &&
+             data.fellowshipId is string && data.fellowshipId == 'GIDEONITES' &&
+             data.uploadedById is string && data.uploadedById.size() >= 1 && data.uploadedById.size() <= 128 &&
+             data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 500 &&
+             data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 500 &&
+             data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 700000;
+    }
+
+    // Collection 1: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'fullName', 'email', 'role', 'department', 'preferredLanguage', 'englishOverride', 'xpPoints', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'fullName', 'email', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming()) &&
+                       (incoming().role in ['GUEST', 'YOUTH_MEMBER'] || isAdmin());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         (request.auth.uid == userId &&
+                          incoming().role == existing().role &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt'])) ||
+                         (isAdmin() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Collection 2: /daily_scriptures/{scriptureId}
+    match /daily_scriptures/{scriptureId} {
+      allow get: if isValidId(scriptureId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      allow create: if isValidId(scriptureId) &&
+                       (!isSignedIn() || incoming().authorId == request.auth.uid) &&
+                       incoming().keys().hasAll(['authorId', 'authorName', 'fellowshipId', 'dateKey', 'referenceEn', 'verseTextEn', 'reflectionEn', 'prayerPromptEn', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['authorId', 'authorName', 'fellowshipId', 'dateKey', 'referenceEn', 'referenceYo', 'referenceHa', 'referenceIg', 'verseTextEn', 'verseTextYo', 'verseTextHa', 'verseTextIg', 'reflectionEn', 'reflectionYo', 'reflectionHa', 'reflectionIg', 'prayerPromptEn', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidDailyScripture(incoming());
+
+      allow update: if isValidId(scriptureId) &&
+                       isValidDailyScripture(incoming()) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         isAdmin() ||
+                         !isSignedIn() ||
+                         (existing().authorId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['referenceEn', 'referenceYo', 'referenceHa', 'referenceIg', 'verseTextEn', 'verseTextYo', 'verseTextHa', 'verseTextIg', 'reflectionEn', 'reflectionYo', 'reflectionHa', 'reflectionIg', 'prayerPromptEn', 'updatedAt']))
+                       );
+
+      allow delete: if isValidId(scriptureId) && (!isSignedIn() || existing().authorId == request.auth.uid || isLeadership());
+    }
+
+    // Collection 3: /programmes/{programmeId}
+    match /programmes/{programmeId} {
+      allow get: if isValidId(programmeId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.createdById == request.auth.uid);
+
+      allow create: if isValidId(programmeId) &&
+                       incoming().keys().hasAll(['createdById', 'fellowshipId', 'titleEn', 'descriptionEn', 'category', 'venue', 'startDateMillis', 'endDateMillis', 'status', 'registeredCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['createdById', 'fellowshipId', 'titleEn', 'titleYo', 'titleHa', 'titleIg', 'descriptionEn', 'descriptionYo', 'descriptionHa', 'descriptionIg', 'category', 'venue', 'speaker', 'contactPerson', 'participantLimit', 'isRegistrationEnabled', 'startDateMillis', 'endDateMillis', 'status', 'registeredCount', 'registrationsJson', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidYouthProgramme(incoming());
+
+      allow update: if isValidId(programmeId) &&
+                       isValidYouthProgramme(incoming()) &&
+                       incoming().createdById == existing().createdById &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         isAdmin() ||
+                         (!(existing().status in ['COMPLETED', 'CANCELLED']) && (
+                           !isSignedIn() ||
+                           (existing().createdById == request.auth.uid &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['titleEn', 'titleYo', 'titleHa', 'titleIg', 'descriptionEn', 'descriptionYo', 'descriptionHa', 'descriptionIg', 'category', 'venue', 'speaker', 'contactPerson', 'participantLimit', 'isRegistrationEnabled', 'startDateMillis', 'endDateMillis', 'status', 'registeredCount', 'registrationsJson', 'updatedAt'])) ||
+                           (incoming().diff(existing()).affectedKeys().hasOnly(['registeredCount', 'registrationsJson', 'updatedAt']) &&
+                            incoming().registeredCount >= existing().registeredCount)
+                         ))
+                       );
+
+      allow delete: if isValidId(programmeId) && (
+        !isSignedIn() ||
+        existing().createdById == request.auth.uid ||
+        isLeadership() ||
+        existing().endDateMillis < request.time.toMillis()
+      );
+    }
+
+    // Collection 4: /quiz_sessions/{sessionId}
+    match /quiz_sessions/{sessionId} {
+      allow get: if isValidId(sessionId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.hostId == request.auth.uid);
+
+      allow create: if isValidId(sessionId) &&
+                       incoming().keys().hasAll(['hostId', 'hostName', 'fellowshipId', 'roomPin', 'titleEn', 'gameType', 'status', 'currentQuestionIndex', 'totalQuestions', 'participantCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['hostId', 'hostName', 'fellowshipId', 'roomPin', 'titleEn', 'titleYo', 'titleHa', 'titleIg', 'description', 'gameType', 'status', 'scheduledStartTime', 'timeLimitPerQuestionSeconds', 'leaderboardDurationSeconds', 'currentQuestionIndex', 'currentSubstate', 'currentQuestionDeadline', 'leaderboardDeadline', 'baseScorePerQuestion', 'speedBonusEnabled', 'maxSpeedBonus', 'penaltyForIncorrect', 'totalQuestions', 'participantCount', 'questionsJson', 'participantsJson', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidCloudQuizSession(incoming());
+
+      allow update: if isValidId(sessionId) &&
+                       isValidCloudQuizSession(incoming()) &&
+                       incoming().hostId == existing().hostId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         (
+                           !(existing().status in ['COMPLETED', 'CANCELLED']) &&
+                           (
+                             isAdmin() ||
+                             !isSignedIn() ||
+                             (existing().hostId == request.auth.uid &&
+                              incoming().diff(existing()).affectedKeys().hasOnly(['titleEn', 'titleYo', 'titleHa', 'titleIg', 'description', 'gameType', 'status', 'scheduledStartTime', 'timeLimitPerQuestionSeconds', 'leaderboardDurationSeconds', 'currentQuestionIndex', 'currentSubstate', 'currentQuestionDeadline', 'leaderboardDeadline', 'baseScorePerQuestion', 'speedBonusEnabled', 'maxSpeedBonus', 'penaltyForIncorrect', 'totalQuestions', 'questionsJson', 'participantCount', 'participantsJson', 'updatedAt'])) ||
+                             (incoming().diff(existing()).affectedKeys().hasOnly(['participantCount', 'participantsJson', 'updatedAt']) &&
+                              incoming().participantCount >= existing().participantCount &&
+                              incoming().participantCount <= existing().participantCount + 10)
+                           )
+                         ) ||
+                         (
+                           existing().status == 'COMPLETED' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['participantCount', 'participantsJson', 'updatedAt']) &&
+                           incoming().participantCount >= existing().participantCount &&
+                           incoming().participantCount <= existing().participantCount + 10
+                         )
+                       );
+
+      allow delete: if isValidId(sessionId) && (!isSignedIn() || existing().hostId == request.auth.uid || isAdmin());
+    }
+
+    // Collection 5: /community_posts/{postId}
+    match /community_posts/{postId} {
+      allow get: if isValidId(postId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      allow create: if isValidId(postId) &&
+                       incoming().keys().hasAll(['authorId', 'authorName', 'authorRole', 'fellowshipId', 'category', 'title', 'content', 'likesCount', 'commentsCount', 'isPinned', 'isFlagged', 'isHidden', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['authorId', 'authorName', 'authorRole', 'authorAvatarUri', 'fellowshipId', 'category', 'title', 'content', 'attachmentPhotoUri', 'whatsappContact', 'commentsJson', 'likesCount', 'commentsCount', 'isPinned', 'isFlagged', 'isHidden', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidCommunityPost(incoming());
+
+      allow update: if isValidId(postId) &&
+                       isValidCommunityPost(incoming()) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['category', 'title', 'content', 'authorAvatarUri', 'attachmentPhotoUri', 'whatsappContact', 'commentsJson', 'likesCount', 'commentsCount', 'isFlagged', 'isPinned', 'isHidden', 'updatedAt']);
+
+      allow delete: if isValidId(postId);
+    }
+
+    // Collection 6: /executive_inquiries/{inquiryId}
+    match /executive_inquiries/{inquiryId} {
+      allow get: if isValidId(inquiryId) && (!isSignedIn() || resource.data.senderId == request.auth.uid || isAdmin());
+      allow list: if !isSignedIn() || resource.data.senderId == request.auth.uid || resource.data.fellowshipId == 'GIDEONITES' || isAdmin();
+
+      allow create: if isValidId(inquiryId) &&
+                       incoming().keys().hasAll(['senderId', 'senderName', 'senderRole', 'fellowshipId', 'isAnonymous', 'topic', 'message', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['senderId', 'senderName', 'senderRole', 'senderAvatarUri', 'fellowshipId', 'isAnonymous', 'topic', 'message', 'status', 'responseMessage', 'respondedByName', 'respondedByRole', 'respondedAt', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidExecutiveInquiry(incoming());
+
+      allow update: if isValidId(inquiryId) &&
+                       isValidExecutiveInquiry(incoming()) &&
+                       incoming().senderId == existing().senderId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'responseMessage', 'respondedByName', 'respondedByRole', 'respondedAt', 'updatedAt']);
+
+      allow delete: if isValidId(inquiryId) && (!isSignedIn() || existing().senderId == request.auth.uid || isAdmin());
+    }
+
+    // Collection 7: /fellowship_accounts/{accountId}
+    match /fellowship_accounts/{accountId} {
+      allow get: if isValidId(accountId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES';
+      allow create, update: if isValidId(accountId) &&
+                               incoming().fellowshipId == 'GIDEONITES' &&
+                               isValidUserProfile(incoming());
+    }
+
+    // Collection 8: /fellowship_notifications/{notificationId}
+    match /fellowship_notifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES';
+      allow create, update: if isValidId(notificationId) &&
+                               incoming().keys().hasAll(['fellowshipId', 'title', 'message', 'type', 'authorName', 'authorRole', 'isUrgent', 'timestampMillis', 'createdAt', 'updatedAt']) &&
+                               incoming().keys().hasOnly(['fellowshipId', 'title', 'message', 'type', 'authorName', 'authorRole', 'senderDeviceId', 'recipientUserId', 'actionDeepLink', 'isUrgent', 'timestampMillis', 'createdAt', 'updatedAt']) &&
+                               incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                               incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                               isValidFellowshipNotification(incoming());
+      allow delete: if isValidId(notificationId);
+    }
+
+    // Collection 9: /game_quizzes/{quizId}
+    match /game_quizzes/{quizId} {
+      allow get: if isValidId(quizId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.createdById == request.auth.uid);
+
+      allow create: if isValidId(quizId) &&
+                       (!isSignedIn() || incoming().createdById == request.auth.uid) &&
+                       incoming().keys().hasAll(['createdById', 'fellowshipId', 'title', 'category', 'questionsJson', 'totalQuestions', 'timeLimitSeconds', 'difficulty', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['createdById', 'fellowshipId', 'title', 'description', 'category', 'questionsJson', 'totalQuestions', 'timeLimitSeconds', 'difficulty', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidGameQuiz(incoming());
+
+      allow update: if isValidId(quizId) &&
+                       isValidGameQuiz(incoming()) &&
+                       incoming().createdById == existing().createdById &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         isAdmin() ||
+                         !isSignedIn() ||
+                         (existing().createdById == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'questionsJson', 'totalQuestions', 'timeLimitSeconds', 'difficulty', 'updatedAt']))
+                       );
+
+      allow delete: if isValidId(quizId) && (!isSignedIn() || existing().createdById == request.auth.uid || isAdmin());
+    }
+
+    // Collection 10: /game_scores/{scoreId}
+    match /game_scores/{scoreId} {
+      allow get: if isValidId(scoreId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if isValidId(scoreId) &&
+                       (!isSignedIn() || incoming().userId == request.auth.uid) &&
+                       incoming().keys().hasAll(['quizId', 'quizTitle', 'userId', 'userName', 'fellowshipId', 'score', 'totalQuestions', 'timeTakenSeconds', 'completedAt', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['quizId', 'quizTitle', 'userId', 'userName', 'fellowshipId', 'score', 'totalQuestions', 'timeTakenSeconds', 'completedAt', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidGameScore(incoming());
+
+      allow update: if isValidId(scoreId) &&
+                       isValidGameScore(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().quizId == existing().quizId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         isAdmin() ||
+                         !isSignedIn() ||
+                         (existing().userId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['quizTitle', 'userName', 'score', 'totalQuestions', 'timeTakenSeconds', 'completedAt', 'updatedAt']))
+                       );
+
+      allow delete: if isValidId(scoreId) && (!isSignedIn() || existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // Collection 11: /sermon_audio_chunks/{chunkId}
+    match /sermon_audio_chunks/{chunkId} {
+      allow get: if isValidId(chunkId);
+      allow list: if resource.data.fellowshipId == 'GIDEONITES' || (isSignedIn() && resource.data.uploadedById == request.auth.uid);
+
+      allow create: if isValidId(chunkId) &&
+                       (!isSignedIn() || incoming().uploadedById == request.auth.uid) &&
+                       incoming().keys().hasAll(['audioCloudId', 'fellowshipId', 'uploadedById', 'chunkIndex', 'totalChunks', 'dataBase64', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['audioCloudId', 'fellowshipId', 'uploadedById', 'chunkIndex', 'totalChunks', 'dataBase64', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidSermonAudioChunk(incoming());
+
+      allow update: if isValidId(chunkId) &&
+                       isValidSermonAudioChunk(incoming()) &&
+                       incoming().uploadedById == existing().uploadedById &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (!isSignedIn() || existing().uploadedById == request.auth.uid || isLeadership());
+
+      allow delete: if isValidId(chunkId) && (!isSignedIn() || existing().uploadedById == request.auth.uid || isLeadership());
+    }
+  }
+}

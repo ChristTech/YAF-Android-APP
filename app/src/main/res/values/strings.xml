@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">The Gideonites - The Youth Alive Fellowship</string>
+    <string name="tagline">The Gideonites • Kingdom Giants</string>
+    <string name="nav_programmes">Home</string>
+    <string name="nav_community">Community</string>
+    <string name="nav_games">Games</string>
+    <string name="nav_alerts">Alerts</string>
+    <string name="nav_spiritual">Spiritual</string>
+    <string name="nav_profile">Profile</string>
+    <string name="giving_title">Financial Giving</string>
+    <string name="attendance_title">Attendance</string>
+    <string name="units_title">Youth Units</string>
+    <string name="welcome_youth">Welcome, Kingdom Giant</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">The Gideonites - The Youth Alive Fellowship</string>
+    <string name="tagline">The Gideonites • Ndị Dike Alaeze</string>
+    <string name="nav_programmes">Ụlọ</string>
+    <string name="nav_community">Obodo</string>
+    <string name="nav_games">Egwuregwu</string>
+    <string name="nav_alerts">Ọkwa</string>
+    <string name="nav_spiritual">Ime Mmụọ</string>
+    <string name="nav_profile">Profaịlụ</string>
+    <string name="giving_title">Onyinye &amp; Ụtụ</string>
+    <string name="attendance_title">Ọbịbịa</string>
+    <string name="units_title">Ngalaba Ndị Ntorobịa</string>
+    <string name="welcome_youth">Nnọọ, Ntorobịa Dike</string>
+</resources>
