@@ -66,10 +66,10 @@ class ProfileViewModel(
         department: DepartmentType,
         profilePhotoUri: String? = currentUser.value?.profilePhotoUri
     ) {
-        val user = currentUser.value ?: return
         viewModelScope.launch {
+            val user = currentUser.value ?: userRepository.getUserByIdSync(session.userId) ?: return@launch
             val updated = user.copy(
-                fullName = fullName.trim(),
+                fullName = fullName.trim().ifBlank { user.fullName },
                 phone = phone.trim(),
                 address = address.trim(),
                 department = department,

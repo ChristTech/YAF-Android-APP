@@ -189,6 +189,7 @@ class GideonitesCloudRepository(
         profilePhotoUri: String? = null,
         role: String = "YOUTH_MEMBER",
         department: String = "GENERAL",
+        address: String? = null,
         fellowshipGroup: String? = null,
         emergencyContactName: String? = null,
         emergencyContactPhone: String? = null,
@@ -213,6 +214,7 @@ class GideonitesCloudRepository(
             profilePhotoUri = profilePhotoUri?.takeIf { it.isNotBlank() },
             role = role.ifBlank { "YOUTH_MEMBER" },
             department = department.ifBlank { "GENERAL" },
+            address = address?.takeIf { it.isNotBlank() }?.take(250),
             fellowshipGroup = fellowshipGroup?.takeIf { it.isNotBlank() },
             emergencyContactName = emergencyContactName?.takeIf { it.isNotBlank() },
             emergencyContactPhone = emergencyContactPhone?.takeIf { it.isNotBlank() },
@@ -280,6 +282,7 @@ class GideonitesCloudRepository(
         phone: String? = null,
         profilePhotoUri: String? = null,
         department: String = "GENERAL",
+        address: String? = null,
         fellowshipGroup: String? = null,
         preferredLanguage: String = "en",
         englishOverride: Boolean = false,
@@ -295,17 +298,38 @@ class GideonitesCloudRepository(
         return try {
             val existingSnap = docRef.get().await()
             if (existingSnap.exists()) {
-                val updatePayload = mapOf<String, Any?>(
+                val updatePayload = mutableMapOf<String, Any>(
                     "fullName" to fullName,
-                    "phone" to phone?.takeIf { it.isNotBlank() },
-                    "profilePhotoUri" to profilePhotoUri?.takeIf { it.isNotBlank() },
                     "department" to department,
-                    "fellowshipGroup" to fellowshipGroup?.takeIf { it.isNotBlank() },
                     "preferredLanguage" to preferredLanguage,
                     "englishOverride" to englishOverride,
                     "xpPoints" to xpPoints,
                     "updatedAt" to FieldValue.serverTimestamp()
-                ).filterValues { it != null } as Map<String, Any>
+                )
+                val cleanPhone = phone?.trim()?.takeIf { it.isNotBlank() }?.take(30)
+                if (cleanPhone != null) {
+                    updatePayload["phone"] = cleanPhone
+                } else if (existingSnap.contains("phone")) {
+                    updatePayload["phone"] = FieldValue.delete()
+                }
+                val cleanPhoto = profilePhotoUri?.trim()?.takeIf { it.isNotBlank() }
+                if (cleanPhoto != null) {
+                    updatePayload["profilePhotoUri"] = cleanPhoto
+                } else if (existingSnap.contains("profilePhotoUri")) {
+                    updatePayload["profilePhotoUri"] = FieldValue.delete()
+                }
+                val cleanAddress = address?.trim()?.takeIf { it.isNotBlank() }?.take(250)
+                if (cleanAddress != null) {
+                    updatePayload["address"] = cleanAddress
+                } else if (existingSnap.contains("address")) {
+                    updatePayload["address"] = FieldValue.delete()
+                }
+                val cleanGroup = fellowshipGroup?.trim()?.takeIf { it.isNotBlank() }?.take(100)
+                if (cleanGroup != null) {
+                    updatePayload["fellowshipGroup"] = cleanGroup
+                } else if (existingSnap.contains("fellowshipGroup")) {
+                    updatePayload["fellowshipGroup"] = FieldValue.delete()
+                }
                 docRef.update(updatePayload).await()
             } else {
                 val profile = CloudUserProfile(
@@ -313,11 +337,12 @@ class GideonitesCloudRepository(
                     userId = uid,
                     fullName = fullName,
                     email = email,
-                    phone = phone,
-                    profilePhotoUri = profilePhotoUri,
+                    phone = phone?.takeIf { it.isNotBlank() },
+                    profilePhotoUri = profilePhotoUri?.takeIf { it.isNotBlank() },
                     role = "YOUTH_MEMBER",
                     department = department,
-                    fellowshipGroup = fellowshipGroup,
+                    address = address?.takeIf { it.isNotBlank() }?.take(250),
+                    fellowshipGroup = fellowshipGroup?.takeIf { it.isNotBlank() },
                     preferredLanguage = preferredLanguage,
                     englishOverride = englishOverride,
                     xpPoints = xpPoints
@@ -332,7 +357,9 @@ class GideonitesCloudRepository(
                 userId = uid,
                 fullName = fullName,
                 email = email,
+                phone = phone,
                 profilePhotoUri = profilePhotoUri,
+                address = address,
                 preferredLanguage = preferredLanguage,
                 englishOverride = englishOverride
             )
@@ -1801,6 +1828,7 @@ class GideonitesCloudRepository(
                 status = "APPROVED",
                 role = "ADMINISTRATOR",
                 department = "GENERAL",
+                address = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS,
                 fellowshipGroup = "Central Administration",
                 preferredLanguage = "en",
                 englishOverride = false,

@@ -101,6 +101,9 @@ object BibleDocumentExtractor {
         runCatching {
             val fileName = resolveFileName(context, uri)
             val mimeType = context.contentResolver.getType(uri).orEmpty().lowercase()
+            if (SpiritualResourceRepositoryImpl.isSupportedAudioCandidate(mimeType, fileName)) {
+                throw IllegalArgumentException("'$fileName' is an audio/video file. Use the Audio/Video Sermon selector so the actual sound is uploaded.")
+            }
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: throw IllegalArgumentException("Could not open selected file.")
 

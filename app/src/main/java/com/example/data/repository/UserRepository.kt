@@ -101,6 +101,7 @@ class UserRepositoryImpl(
                 profilePhotoUri = syncablePhoto,
                 role = user.role.name,
                 department = user.department.name,
+                address = user.address,
                 fellowshipGroup = user.fellowshipGroup,
                 emergencyContactName = user.emergencyContactName,
                 emergencyContactPhone = user.emergencyContactPhone,
@@ -144,25 +145,25 @@ class UserRepositoryImpl(
         val existingAdmin = userDao.getUserByEmail(DatabasePrepopulator.OFFICIAL_ADMIN_EMAIL)
             ?: userDao.getUserByIdSync(DatabasePrepopulator.OFFICIAL_ADMIN_ID)
         if (existingAdmin != null) {
+            val hasLegacyName = DatabasePrepopulator.isLegacyAdminAlias(existingAdmin.fullName)
+            val hasLegacyAddress = existingAdmin.address == "12 Cathedral Way, Lagos" ||
+                existingAdmin.address.isBlank() ||
+                existingAdmin.address.contains("ECWA", ignoreCase = true)
             val needsInstitutionalCleanup =
-                existingAdmin.fullName != DatabasePrepopulator.OFFICIAL_ADMIN_NAME ||
+                hasLegacyName ||
+                hasLegacyAddress ||
                 existingAdmin.role != UserRole.ADMINISTRATOR ||
                 existingAdmin.status != AccountStatus.APPROVED ||
-                existingAdmin.emergencyContactName.isNotBlank() ||
-                existingAdmin.address.contains("ECWA", ignoreCase = true) ||
-                existingAdmin.address.isBlank()
+                existingAdmin.emergencyContactName.isNotBlank()
 
             val finalAdmin = if (needsInstitutionalCleanup) {
                 val fixed = existingAdmin.copy(
-                    fullName = DatabasePrepopulator.OFFICIAL_ADMIN_NAME,
+                    fullName = if (hasLegacyName) DatabasePrepopulator.OFFICIAL_ADMIN_NAME else existingAdmin.fullName,
                     role = UserRole.ADMINISTRATOR,
                     status = AccountStatus.APPROVED,
                     dateOfBirth = "",
                     gender = Gender.PREFER_NOT_TO_SAY,
-                    address = if (existingAdmin.address == "12 Cathedral Way, Lagos" ||
-                        existingAdmin.address.isBlank() ||
-                        existingAdmin.address.contains("ECWA", ignoreCase = true)
-                    ) {
+                    address = if (hasLegacyAddress) {
                         DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS
                     } else {
                         existingAdmin.address
@@ -180,10 +181,18 @@ class UserRepositoryImpl(
 
             val activeSession = userDao.getActiveSessionSync()
             if (activeSession != null &&
-                (activeSession.userId == finalAdmin.id || activeSession.userRole == UserRole.ADMINISTRATOR) &&
-                activeSession.userName != DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+                (activeSession.userId == finalAdmin.id || activeSession.userRole == UserRole.ADMINISTRATOR)
             ) {
-                userDao.saveSession(activeSession.copy(userName = DatabasePrepopulator.OFFICIAL_ADMIN_NAME))
+                val targetName = if (activeSession.userId == finalAdmin.id) {
+                    finalAdmin.fullName.takeIf { !DatabasePrepopulator.isLegacyAdminAlias(it) }
+                        ?: DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+                } else {
+                    activeSession.userName.takeIf { !DatabasePrepopulator.isLegacyAdminAlias(it) }
+                        ?: DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+                }
+                if (activeSession.userName != targetName) {
+                    userDao.saveSession(activeSession.copy(userName = targetName))
+                }
             }
             return finalAdmin
         }
@@ -259,38 +268,76 @@ class UserRepositoryImpl(
             val isOfficialAdminProfile =
                 normalizedEmail == DatabasePrepopulator.OFFICIAL_ADMIN_EMAIL ||
                 finalId == DatabasePrepopulator.OFFICIAL_ADMIN_ID
-            val resolvedFullName = if (isOfficialAdminProfile) {
-                DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+
+            val cloudUpdatedAt = profile.updatedAt?.toDate()?.time ?: 0L
+            val localIsNewer = existing != null &&
+                cloudUpdatedAt > 0L &&
+                existing.updatedAt > cloudUpdatedAt + 2_000L
+
+            fun sanitizeAddress(raw: String?): String? = raw
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && it != "12 Cathedral Way, Lagos" }
+                ?.replace("ECWA", "Living Faith Church", ignoreCase = true)
+
+            val resolvedFullName = if (localIsNewer) {
+                existing!!.fullName
+            } else if (isOfficialAdminProfile) {
+                profile.fullName.trim().takeIf { !DatabasePrepopulator.isLegacyAdminAlias(it) }
+                    ?: existing?.fullName?.trim()?.takeIf { !DatabasePrepopulator.isLegacyAdminAlias(it) }
+                    ?: DatabasePrepopulator.OFFICIAL_ADMIN_NAME
             } else {
                 profile.fullName.ifBlank { existing?.fullName ?: "Gideonite Member" }
+            }
+
+            val resolvedPhone = when {
+                localIsNewer -> existing!!.phone
+                existing != null && cloudUpdatedAt > existing.updatedAt -> profile.phone?.trim() ?: ""
+                else -> profile.phone?.takeIf { it.isNotBlank() } ?: existing?.phone ?: ""
+            }
+
+            val resolvedPhotoUri = when {
+                localIsNewer -> existing!!.profilePhotoUri
+                existing != null && cloudUpdatedAt > existing.updatedAt -> profile.profilePhotoUri?.takeIf { it.isNotBlank() }
+                else -> profile.profilePhotoUri?.takeIf { it.isNotBlank() } ?: existing?.profilePhotoUri
+            }
+
+            val resolvedAddress = if (localIsNewer) {
+                sanitizeAddress(existing!!.address)
+                    ?: if (isOfficialAdminProfile) DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS else ""
+            } else {
+                sanitizeAddress(profile.address)
+                    ?: sanitizeAddress(existing?.address)
+                    ?: if (isOfficialAdminProfile) DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS else ""
             }
 
             val syncedUser = UserEntity(
                 id = finalId,
                 fullName = resolvedFullName,
                 email = normalizedEmail,
-                phone = profile.phone?.takeIf { it.isNotBlank() } ?: existing?.phone ?: "",
-                profilePhotoUri = profile.profilePhotoUri?.takeIf { it.isNotBlank() } ?: existing?.profilePhotoUri,
+                phone = resolvedPhone,
+                profilePhotoUri = resolvedPhotoUri,
                 passwordHash = profile.passwordHash?.takeIf { it.isNotBlank() } ?: fallbackHash,
                 salt = profile.salt?.takeIf { it.isNotBlank() } ?: fallbackSalt,
                 role = if (isOfficialAdminProfile) UserRole.ADMINISTRATOR else resolvedRole,
                 status = if (isOfficialAdminProfile) AccountStatus.APPROVED else resolvedStatus,
-                address = if (isOfficialAdminProfile) {
-                    DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS
-                } else {
-                    existing?.address?.replace("ECWA", "Living Faith Church", ignoreCase = true) ?: ""
-                },
-                department = resolvedDept,
+                address = resolvedAddress,
+                department = if (localIsNewer) existing!!.department else resolvedDept,
                 fellowshipGroup = if (isOfficialAdminProfile) "Central Administration" else (profile.fellowshipGroup ?: existing?.fellowshipGroup ?: ""),
                 emergencyContactName = if (isOfficialAdminProfile) "" else (profile.emergencyContactName ?: existing?.emergencyContactName ?: ""),
                 emergencyContactPhone = if (isOfficialAdminProfile) "" else (profile.emergencyContactPhone ?: existing?.emergencyContactPhone ?: ""),
                 emergencyContactRelationship = if (isOfficialAdminProfile) "" else (profile.emergencyContactRelationship ?: existing?.emergencyContactRelationship ?: ""),
-                preferredLanguage = resolvedLang,
+                preferredLanguage = if (localIsNewer) existing!!.preferredLanguage else resolvedLang,
                 createdAt = existing?.createdAt ?: (profile.createdAt?.toDate()?.time ?: System.currentTimeMillis()),
-                updatedAt = profile.updatedAt?.toDate()?.time ?: System.currentTimeMillis()
+                updatedAt = if (localIsNewer) existing!!.updatedAt else (cloudUpdatedAt.takeIf { it > 0L } ?: System.currentTimeMillis())
             )
             userDao.insertUser(syncedUser)
-            if (isOfficialAdminProfile && profile.fullName != DatabasePrepopulator.OFFICIAL_ADMIN_NAME) {
+
+            val activeSession = userDao.getActiveSessionSync()
+            if (activeSession != null && activeSession.userId == syncedUser.id && activeSession.userName != syncedUser.fullName) {
+                userDao.saveSession(activeSession.copy(userName = syncedUser.fullName))
+            }
+
+            if (isOfficialAdminProfile && DatabasePrepopulator.isLegacyAdminAlias(profile.fullName)) {
                 syncUserToCloud(syncedUser)
             }
         }
@@ -477,10 +524,25 @@ class UserRepositoryImpl(
             return AuthResult.Error("Invalid email/phone or password.")
         }
 
-        if (isOfficialAdmin && (user.status != AccountStatus.APPROVED || user.fullName != DatabasePrepopulator.OFFICIAL_ADMIN_NAME)) {
+        val resolvedAdminName = if (DatabasePrepopulator.isLegacyAdminAlias(user.fullName)) {
+            DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+        } else {
+            user.fullName
+        }
+        val resolvedAdminAddress = if (user.address == "12 Cathedral Way, Lagos" ||
+            user.address.isBlank() ||
+            user.address.contains("ECWA", ignoreCase = true)
+        ) {
+            DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS
+        } else {
+            user.address
+        }
+
+        if (isOfficialAdmin && (user.status != AccountStatus.APPROVED || user.fullName != resolvedAdminName || user.address != resolvedAdminAddress)) {
             user = user.copy(
                 status = AccountStatus.APPROVED,
-                fullName = DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+                fullName = resolvedAdminName,
+                address = resolvedAdminAddress
             )
             userDao.updateUser(user)
         }
@@ -499,10 +561,12 @@ class UserRepositoryImpl(
         syncUserToCloud(user)
 
         val token = UUID.randomUUID().toString()
-        val sessionUserName = if (user.role == UserRole.ADMINISTRATOR || isOfficialAdmin) {
-            DatabasePrepopulator.OFFICIAL_ADMIN_NAME
-        } else {
-            user.fullName
+        val sessionUserName = user.fullName.ifBlank {
+            if (user.role == UserRole.ADMINISTRATOR || isOfficialAdmin) {
+                DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+            } else {
+                "Member"
+            }
         }
         val session = SessionEntity(
             token = token,
@@ -580,9 +644,18 @@ class UserRepositoryImpl(
         var localUser = userDao.getUserByIdSync(uid) ?: userDao.getUserByEmail(normalizedEmail)
         if (localUser == null) {
             val salt = PasswordHasher.generateSalt()
+            val restoredName = existingCloud?.fullName
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && !DatabasePrepopulator.isLegacyAdminAlias(it) }
+                ?: fullName.ifBlank { if (resolvedRole == UserRole.ADMINISTRATOR) DatabasePrepopulator.OFFICIAL_ADMIN_NAME else "Gideonite Member" }
+            val restoredAddress = existingCloud?.address
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.replace("ECWA", "Living Faith Church", ignoreCase = true)
+                ?: if (resolvedRole == UserRole.ADMINISTRATOR) DatabasePrepopulator.OFFICIAL_ADMIN_ADDRESS else ""
             localUser = UserEntity(
                 id = uid,
-                fullName = fullName.ifBlank { "Gideonite Member" },
+                fullName = restoredName,
                 email = normalizedEmail.ifBlank { "$uid@gideonites.org" },
                 phone = existingCloud?.phone ?: "",
                 profilePhotoUri = existingCloud?.profilePhotoUri,
@@ -590,14 +663,29 @@ class UserRepositoryImpl(
                 salt = salt,
                 role = resolvedRole,
                 status = AccountStatus.APPROVED,
+                address = restoredAddress,
                 department = DepartmentType.GENERAL,
                 fellowshipGroup = existingCloud?.fellowshipGroup ?: "",
                 preferredLanguage = resolvedLang
             )
             userDao.insertUser(localUser)
-        } else if (localUser.preferredLanguage != resolvedLang) {
-            localUser = localUser.copy(preferredLanguage = resolvedLang)
-            userDao.updateUser(localUser)
+        } else {
+            val needsRoleOrLangOrCloudFill =
+                localUser.preferredLanguage != resolvedLang ||
+                (resolvedRole == UserRole.ADMINISTRATOR && localUser.role != UserRole.ADMINISTRATOR) ||
+                (localUser.address.isBlank() && !existingCloud?.address.isNullOrBlank()) ||
+                (localUser.phone.isBlank() && !existingCloud?.phone.isNullOrBlank()) ||
+                (localUser.profilePhotoUri == null && !existingCloud?.profilePhotoUri.isNullOrBlank())
+            if (needsRoleOrLangOrCloudFill) {
+                localUser = localUser.copy(
+                    role = if (resolvedRole == UserRole.ADMINISTRATOR) UserRole.ADMINISTRATOR else localUser.role,
+                    preferredLanguage = resolvedLang,
+                    address = localUser.address.ifBlank { existingCloud?.address.orEmpty() },
+                    phone = localUser.phone.ifBlank { existingCloud?.phone.orEmpty() },
+                    profilePhotoUri = localUser.profilePhotoUri ?: existingCloud?.profilePhotoUri
+                )
+                userDao.updateUser(localUser)
+            }
         }
 
         cloudRepository?.activeSessionUserId = localUser.id
@@ -654,6 +742,15 @@ class UserRepositoryImpl(
     override suspend fun updateUserProfile(user: UserEntity) {
         val updated = user.copy(updatedAt = System.currentTimeMillis())
         userDao.updateUser(updated)
+        val activeSession = userDao.getActiveSessionSync()
+        if (activeSession != null && activeSession.userId == updated.id) {
+            userDao.saveSession(
+                activeSession.copy(
+                    userName = updated.fullName,
+                    preferredLanguage = updated.preferredLanguage
+                )
+            )
+        }
         syncUserToCloud(updated)
         try {
             if (com.google.firebase.Firebase.auth.currentUser != null) {
@@ -663,6 +760,7 @@ class UserRepositoryImpl(
                     phone = updated.phone,
                     profilePhotoUri = updated.profilePhotoUri,
                     department = updated.department.name,
+                    address = updated.address,
                     fellowshipGroup = updated.fellowshipGroup,
                     preferredLanguage = updated.preferredLanguage.code,
                     englishOverride = LanguageManager.isEnglishOverride.value

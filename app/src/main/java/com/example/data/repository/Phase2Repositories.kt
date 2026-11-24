@@ -1,9 +1,14 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.net.Uri
 import android.provider.OpenableColumns
+import java.nio.ByteBuffer
 import com.example.data.local.dao.AttendanceDao
 import com.example.data.local.dao.AuditLogDao
 import com.example.data.local.dao.CommunityDao
@@ -1172,7 +1177,10 @@ class SpiritualResourceRepositoryImpl(
         private val EXPLICIT_AUDIO_EXTENSIONS = setOf(
             "mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac", "3gp", "amr", "wma", "m4b", "mpga", "mpeg"
         )
-        private val SUPPORTED_AUDIO_EXTENSIONS = EXPLICIT_AUDIO_EXTENSIONS + setOf("mp4", "webm")
+        private val VIDEO_CONTAINER_EXTENSIONS = setOf(
+            "mp4", "m4v", "mov", "mkv", "webm", "3gp", "avi", "ts"
+        )
+        private val SUPPORTED_AUDIO_EXTENSIONS = EXPLICIT_AUDIO_EXTENSIONS + VIDEO_CONTAINER_EXTENSIONS
         private val REJECTED_NON_AUDIO_EXTENSIONS = setOf(
             "pdf", "epub", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "json", "xml",
             "html", "htm", "jpg", "jpeg", "png", "gif", "webp", "zip", "rar", "7z", "apk"
@@ -1192,6 +1200,13 @@ class SpiritualResourceRepositoryImpl(
             return isExplicitAudioFile(mime, name)
         }
 
+        fun isVideoContainerCandidate(mimeType: String?, fileName: String?): Boolean {
+            val normalizedMime = mimeType?.trim()?.lowercase().orEmpty()
+            val ext = fileName?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
+            if (ext in EXPLICIT_AUDIO_EXTENSIONS && !normalizedMime.startsWith("video/")) return false
+            return normalizedMime.startsWith("video/") || ext in VIDEO_CONTAINER_EXTENSIONS
+        }
+
         fun isSupportedAudioCandidate(mimeType: String?, fileName: String?): Boolean {
             val normalizedMime = mimeType?.trim()?.lowercase().orEmpty()
             val ext = fileName?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
@@ -1201,11 +1216,17 @@ class SpiritualResourceRepositoryImpl(
                 return false
             }
             if (isExplicitAudioFile(normalizedMime, fileName)) return true
+            if (isVideoContainerCandidate(normalizedMime, fileName)) return true
             if (ext in SUPPORTED_AUDIO_EXTENSIONS) return true
-            if (normalizedMime in setOf("video/mp4", "video/3gpp", "video/webm", "application/octet-stream", "")) {
+            if (normalizedMime in setOf("application/octet-stream", "")) {
                 return true
             }
             return false
+        }
+
+        fun isSupportedAudioCandidate(context: Context, uri: Uri): Boolean {
+            val (name, mime) = resolveDisplayNameAndMime(context, uri)
+            return isSupportedAudioCandidate(mime, name)
         }
 
         private fun extensionForMimeOrName(mimeType: String?, fileName: String?): String {
@@ -1222,6 +1243,8 @@ class SpiritualResourceRepositoryImpl(
                 "audio/amr", "audio/amr-wb" -> "amr"
                 "audio/x-ms-wma" -> "wma"
                 "audio/webm", "video/webm" -> "webm"
+                "video/quicktime" -> "mov"
+                "video/x-matroska" -> "mkv"
                 else -> "mp3"
             }
         }
@@ -1254,12 +1277,126 @@ class SpiritualResourceRepositoryImpl(
                     "3gp" -> "audio/3gpp"
                     "amr" -> "audio/amr"
                     "wma" -> "audio/x-ms-wma"
-                    "mp4" -> rawMime.ifBlank { "video/mp4" }
-                    "webm" -> rawMime.ifBlank { "audio/webm" }
+                    "mp4", "m4v" -> rawMime.ifBlank { "video/mp4" }
+                    "mov" -> rawMime.ifBlank { "video/quicktime" }
+                    "mkv" -> rawMime.ifBlank { "video/x-matroska" }
+                    "webm" -> rawMime.ifBlank { "video/webm" }
+                    "avi" -> rawMime.ifBlank { "video/x-msvideo" }
                     else -> rawMime.ifBlank { "application/octet-stream" }
                 }
             }
             return name to mime
+        }
+
+        private data class ExtractedVideoAudioResult(
+            val file: File,
+            val ext: String,
+            val mimeType: String,
+            val durationMs: Long
+        )
+
+        /**
+         * Strips the video stream from a video sermon (.mp4, .mov, .mkv, .webm, .3gp)
+         * and writes ONLY the encoded audio track into an audio-only .m4a (or .webm) file.
+         * This lets large sermon videos fit cleanly inside the 24 MB cloud limit and guarantees
+         * MediaPlayer plays the actual audio track cleanly across all Android devices.
+         */
+        private fun tryExtractAudioTrackFromVideoUri(
+            context: Context,
+            uri: Uri,
+            audioDir: File,
+            audioCloudId: String
+        ): ExtractedVideoAudioResult? {
+            val extractor = MediaExtractor()
+            var muxer: MediaMuxer? = null
+            var outFile: File? = null
+            try {
+                extractor.setDataSource(context, uri, null)
+                var audioTrackIndex = -1
+                var audioFormat: MediaFormat? = null
+                var trackMime = ""
+                for (i in 0 until extractor.trackCount) {
+                    val fmt = extractor.getTrackFormat(i)
+                    val mime = fmt.getString(MediaFormat.KEY_MIME)?.lowercase().orEmpty()
+                    if (mime.startsWith("audio/")) {
+                        audioTrackIndex = i
+                        audioFormat = fmt
+                        trackMime = mime
+                        break
+                    }
+                }
+                if (audioTrackIndex < 0 || audioFormat == null) return null
+
+                val useWebm = trackMime.contains("opus") || trackMime.contains("vorbis")
+                val outExt = if (useWebm) "webm" else "m4a"
+                val muxerFormat = if (useWebm) {
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
+                } else {
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+                }
+                val candidateFile = File(audioDir, "$audioCloudId.$outExt")
+                outFile = candidateFile
+
+                extractor.selectTrack(audioTrackIndex)
+                val activeMuxer = MediaMuxer(candidateFile.absolutePath, muxerFormat)
+                muxer = activeMuxer
+                val dstTrack = activeMuxer.addTrack(audioFormat)
+                activeMuxer.start()
+
+                val maxInputSize = runCatching {
+                    audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
+                }.getOrDefault(256 * 1024).coerceIn(64 * 1024, 1024 * 1024)
+                val buffer = ByteBuffer.allocate(maxInputSize)
+                val bufferInfo = MediaCodec.BufferInfo()
+
+                while (true) {
+                    buffer.clear()
+                    val sampleSize = extractor.readSampleData(buffer, 0)
+                    if (sampleSize < 0) break
+                    bufferInfo.offset = 0
+                    bufferInfo.size = sampleSize
+                    bufferInfo.presentationTimeUs = extractor.sampleTime.coerceAtLeast(0L)
+                    bufferInfo.flags = extractor.sampleFlags
+                    activeMuxer.writeSampleData(dstTrack, buffer, bufferInfo)
+                    if (candidateFile.length() > MAX_SERMON_AUDIO_BYTES) {
+                        runCatching { activeMuxer.stop() }
+                        runCatching { activeMuxer.release() }
+                        muxer = null
+                        runCatching { candidateFile.delete() }
+                        return null
+                    }
+                    extractor.advance()
+                }
+                activeMuxer.stop()
+                activeMuxer.release()
+                muxer = null
+
+                if (!candidateFile.exists() || candidateFile.length() <= 0L) {
+                    runCatching { candidateFile.delete() }
+                    return null
+                }
+
+                val durationUs = runCatching {
+                    if (audioFormat.containsKey(MediaFormat.KEY_DURATION)) {
+                        audioFormat.getLong(MediaFormat.KEY_DURATION)
+                    } else {
+                        0L
+                    }
+                }.getOrDefault(0L)
+
+                return ExtractedVideoAudioResult(
+                    file = candidateFile,
+                    ext = outExt,
+                    mimeType = if (useWebm) "audio/webm" else "audio/mp4",
+                    durationMs = (durationUs / 1000L).coerceAtLeast(0L)
+                )
+            } catch (_: Exception) {
+                runCatching { outFile?.delete() }
+                return null
+            } finally {
+                runCatching { muxer?.release() }
+                runCatching { extractor.release() }
+            }
         }
 
         suspend fun importAudioFromContentUri(
@@ -1274,13 +1411,51 @@ class SpiritualResourceRepositoryImpl(
                 val (rawFileName, initialMimeType) = resolveDisplayNameAndMime(context, uri)
                 if (!isSupportedAudioCandidate(initialMimeType, rawFileName)) {
                     return@withContext Result.failure(
-                        IllegalArgumentException("'$rawFileName' is not an audio file. Please pick an MP3, M4A, AAC, WAV, OGG, or Voice Recording.")
+                        IllegalArgumentException("'$rawFileName' is not a supported audio/video file. Please pick an MP3, M4A, AAC, WAV, OGG, Voice Note, or MP4 video.")
                     )
+                }
+
+                val audioCloudId = "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
+                val isVideoSource = isVideoContainerCandidate(initialMimeType, rawFileName)
+
+                // If the user picked a video file (.mp4, .mov, .mkv, .webm, etc.), extract ONLY its audio track first
+                if (isVideoSource) {
+                    val extracted = tryExtractAudioTrackFromVideoUri(context, uri, audioDir, audioCloudId)
+                    if (extracted != null) {
+                        var durationMs = extracted.durationMs
+                        if (durationMs <= 0L) {
+                            val retriever = MediaMetadataRetriever()
+                            try {
+                                retriever.setDataSource(extracted.file.absolutePath)
+                                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            } catch (_: Exception) {
+                            } finally {
+                                runCatching { retriever.release() }
+                            }
+                        }
+                        val baseName = rawFileName.substringBeforeLast('.').ifBlank { "sermon_audio" }
+                        val outFileName = "$baseName.${extracted.ext}"
+                        val durationMins = if (durationMs > 0L) {
+                            kotlin.math.ceil(durationMs / 60_000.0).toInt().coerceAtLeast(1)
+                        } else {
+                            1
+                        }
+                        return@withContext Result.success(
+                            SermonAudioDraft(
+                                audioUri = extracted.file.absolutePath,
+                                audioCloudId = audioCloudId,
+                                fileName = outFileName,
+                                mimeType = extracted.mimeType,
+                                sizeBytes = extracted.file.length(),
+                                durationMs = durationMs,
+                                durationMinutes = durationMins
+                            )
+                        )
+                    }
                 }
 
                 val ext = extensionForMimeOrName(initialMimeType, rawFileName)
                 val fileName = if (rawFileName.contains('.')) rawFileName else "$rawFileName.$ext"
-                val audioCloudId = "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
                 val destFile = File(audioDir, "$audioCloudId.$ext")
 
                 var totalBytes = 0L
@@ -1308,7 +1483,13 @@ class SpiritualResourceRepositoryImpl(
                     runCatching { destFile.delete() }
                     val approxMb = String.format(java.util.Locale.US, "%.1f", totalBytes / (1024.0 * 1024.0))
                     return@withContext Result.failure(
-                        IllegalArgumentException("Audio file is larger than 24 MB (~$approxMb+ MB). Please choose a compressed MP3/M4A/AAC file under 24 MB.")
+                        IllegalArgumentException(
+                            if (isVideoSource) {
+                                "Video audio exceeds 24 MB (~$approxMb+ MB). Please pick an MP3/M4A audio file or shorter video under 24 MB."
+                            } else {
+                                "Audio file is larger than 24 MB (~$approxMb+ MB). Please choose a compressed MP3/M4A/AAC file under 24 MB."
+                            }
+                        )
                     )
                 }
 
@@ -1336,13 +1517,14 @@ class SpiritualResourceRepositoryImpl(
                 if (!confirmedAudio) {
                     runCatching { destFile.delete() }
                     return@withContext Result.failure(
-                        IllegalArgumentException("'$fileName' does not contain playable audio. Please select an MP3, M4A, AAC, WAV, OGG, or Voice Note.")
+                        IllegalArgumentException("'$fileName' does not contain a playable audio track. Please select an MP3, M4A, AAC, WAV, OGG, Voice Note, or video with sound.")
                     )
                 }
 
                 val resolvedMime = when {
                     initialMimeType.startsWith("audio/") -> initialMimeType
                     detectedMime?.startsWith("audio/") == true -> detectedMime!!
+                    isVideoSource -> "video/$ext"
                     else -> "audio/$ext"
                 }
 
@@ -1459,22 +1641,40 @@ class SpiritualResourceRepositoryImpl(
         }
     }
 
-    private fun buildResourceMetadataJson(resource: SpiritualResourceEntity): String {
+    internal fun buildResourceMetadataJson(resource: SpiritualResourceEntity): String {
         return try {
-            org.json.JSONObject().apply {
-                put("category", resource.category.ifBlank { "SERMON" })
-                put("title", resource.title.take(200))
-                put("summary", resource.summary.take(320))
-                put("audioDurationMinutes", resource.audioDurationMinutes)
-                put("publishedAt", resource.publishedAt)
-                if (!resource.audioCloudId.isNullOrBlank()) {
-                    put("audioCloudId", resource.audioCloudId.take(100))
-                    put("audioFileName", (resource.audioFileName ?: "sermon_audio.mp3").take(100))
-                    put("audioMimeType", (resource.audioMimeType ?: "audio/mpeg").take(60))
-                    put("audioSizeBytes", resource.audioSizeBytes)
-                    put("audioChunkCount", resource.audioChunkCount)
+            fun makeJson(titleCap: Int, summaryCap: Int): String {
+                val obj = org.json.JSONObject().apply {
+                    put("category", resource.category.ifBlank { "SERMON" }.take(40))
+                    put("audioDurationMinutes", resource.audioDurationMinutes)
+                    put("publishedAt", resource.publishedAt)
+                    if (!resource.audioCloudId.isNullOrBlank()) {
+                        put("audioCloudId", resource.audioCloudId.take(100))
+                        put("audioFileName", (resource.audioFileName ?: "sermon_audio.mp3").take(80))
+                        put("audioMimeType", (resource.audioMimeType ?: "audio/mpeg").take(60))
+                        put("audioSizeBytes", resource.audioSizeBytes)
+                        put("audioChunkCount", resource.audioChunkCount)
+                    }
+                    put("title", resource.title.take(titleCap))
+                    if (summaryCap > 0 && resource.summary.isNotBlank()) {
+                        put("summary", resource.summary.take(summaryCap))
+                    }
                 }
-            }.toString().take(980)
+                return obj.toString()
+            }
+
+            // Guarantee complete, valid JSON <= 980 chars so audioCloudId and closing '}' are NEVER truncated
+            val candidates = listOf(
+                180 to 260,
+                160 to 140,
+                140 to 0,
+                80 to 0
+            )
+            for ((tCap, sCap) in candidates) {
+                val json = makeJson(tCap, sCap)
+                if (json.length <= 980) return json
+            }
+            makeJson(40, 0).let { if (it.length <= 980) it else makeJson(0, 0) }
         } catch (_: Exception) {
             "Lord, strengthen The Gideonites in word and deed."
         }
@@ -1551,14 +1751,21 @@ class SpiritualResourceRepositoryImpl(
             var resolvedResource = resource
             if (resolvedResource.hasAudio && !resolvedResource.audioUri.isNullOrBlank()) {
                 val localFile = File(resolvedResource.audioUri)
+                if (!localFile.exists() || localFile.length() <= 0L) {
+                    return Result.failure(IllegalStateException("Selected audio file could not be read from cache. Please pick the file again."))
+                }
                 val cloudId = resolvedResource.audioCloudId
                     ?.takeIf { it.isNotBlank() }
                     ?: "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-                if (localFile.exists() && localFile.length() > 0L && resolvedResource.audioChunkCount <= 0) {
+                if (cloudRepository != null && resolvedResource.audioChunkCount <= 0) {
                     val uploadResult = withContext(Dispatchers.IO) {
-                        cloudRepository?.uploadSermonAudioFile(cloudId, localFile)
+                        cloudRepository.uploadSermonAudioFile(cloudId, localFile)
                     }
-                    val uploadedChunks = uploadResult?.getOrNull() ?: 0
+                    val uploadedChunks = uploadResult.getOrElse { err ->
+                        return Result.failure(
+                            IllegalStateException("Audio upload failed: ${err.message ?: "Check your connection and retry."}")
+                        )
+                    }
                     resolvedResource = resolvedResource.copy(
                         audioCloudId = cloudId,
                         audioChunkCount = uploadedChunks
@@ -1607,14 +1814,21 @@ class SpiritualResourceRepositoryImpl(
 
             if (resolvedResource.hasAudio && audioChanged && !resolvedResource.audioUri.isNullOrBlank()) {
                 val localFile = File(resolvedResource.audioUri)
+                if (!localFile.exists() || localFile.length() <= 0L) {
+                    return Result.failure(IllegalStateException("Selected audio file could not be read from cache. Please pick the file again."))
+                }
                 val cloudId = resolvedResource.audioCloudId
                     ?.takeIf { it.isNotBlank() }
                     ?: "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-                if (localFile.exists() && localFile.length() > 0L && resolvedResource.audioChunkCount <= 0) {
+                if (cloudRepository != null && resolvedResource.audioChunkCount <= 0) {
                     val uploadResult = withContext(Dispatchers.IO) {
-                        cloudRepository?.uploadSermonAudioFile(cloudId, localFile)
+                        cloudRepository.uploadSermonAudioFile(cloudId, localFile)
                     }
-                    val uploadedChunks = uploadResult?.getOrNull() ?: 0
+                    val uploadedChunks = uploadResult.getOrElse { err ->
+                        return Result.failure(
+                            IllegalStateException("Audio upload failed: ${err.message ?: "Check your connection and retry."}")
+                        )
+                    }
                     resolvedResource = resolvedResource.copy(
                         audioCloudId = cloudId,
                         audioChunkCount = uploadedChunks
@@ -1671,7 +1885,22 @@ class SpiritualResourceRepositoryImpl(
             val all = spiritualResourceDao.getAllResourcesSync()
             for (res in all) {
                 try {
-                    syncResourceToCloud(res)
+                    var target = res
+                    if (target.hasAudio && target.audioChunkCount <= 0 && !target.audioUri.isNullOrBlank()) {
+                        val localFile = File(target.audioUri)
+                        if (localFile.exists() && localFile.length() > 0L) {
+                            val cloudId = target.audioCloudId?.takeIf { it.isNotBlank() }
+                                ?: "sa_${UUID.randomUUID().toString().replace("-", "").take(16)}"
+                            val uploaded = withContext(Dispatchers.IO) {
+                                cloudRepository.uploadSermonAudioFile(cloudId, localFile)
+                            }.getOrNull() ?: 0
+                            if (uploaded > 0) {
+                                target = target.copy(audioCloudId = cloudId, audioChunkCount = uploaded)
+                                spiritualResourceDao.insertResources(listOf(target))
+                            }
+                        }
+                    }
+                    syncResourceToCloud(target)
                 } catch (_: Exception) {
                 }
             }
@@ -1810,14 +2039,19 @@ class SpiritualResourceRepositoryImpl(
 
         // Remove any local audio sermons that were deleted or replaced on another device
         try {
+            val nowMs = System.currentTimeMillis()
             val localAll = spiritualResourceDao.getAllResourcesSync()
             for (localRes in localAll) {
                 val isAudioRes = !localRes.audioCloudId.isNullOrBlank()
                 if (!isAudioRes) continue
-                val removedFromCloud = localRes.audioChunkCount > 0 &&
+                val recentlyPublishedLocally = (nowMs - localRes.publishedAt) in 0L..15_000L
+                val removedFromCloud = !recentlyPublishedLocally &&
+                    localRes.audioChunkCount > 0 &&
                     localRes.id !in activeCloudIds &&
                     "scripture_${localRes.id}" !in activeCloudIds
-                val supersededByNewAudio = latestCloudAudioId != null && localRes.audioCloudId != latestCloudAudioId
+                val supersededByNewAudio = latestCloudAudioId != null &&
+                    localRes.audioCloudId != latestCloudAudioId &&
+                    latestCloudAudioPublishedAt > localRes.publishedAt
                 if (removedFromCloud || supersededByNewAudio) {
                     deleteLocalFileForResource(localRes)
                     spiritualResourceDao.deleteResourceById(localRes.id)

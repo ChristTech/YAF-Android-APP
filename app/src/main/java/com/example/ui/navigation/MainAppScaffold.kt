@@ -188,8 +188,9 @@ fun MainAppScaffold(
     } else {
         val rawSession = session!!
         val currentSession = if (
-            rawSession.userRole == com.example.data.model.UserRole.ADMINISTRATOR ||
-            rawSession.userId == com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID
+            (rawSession.userRole == com.example.data.model.UserRole.ADMINISTRATOR ||
+             rawSession.userId == com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID) &&
+            com.example.data.local.DatabasePrepopulator.isLegacyAdminAlias(rawSession.userName)
         ) {
             rawSession.copy(userName = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_NAME)
         } else {
@@ -592,7 +593,7 @@ fun MainAppScaffold(
                                 ) {
                                     Text(
                                         text = if (currentSession.userRole == com.example.data.model.UserRole.ADMINISTRATOR) {
-                                            "Admin"
+                                            currentSession.userName.ifBlank { "Admin" }
                                         } else {
                                             "${currentSession.userRole.displayName} • ${currentSession.userName}"
                                         },

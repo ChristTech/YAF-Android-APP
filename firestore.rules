@@ -60,6 +60,7 @@ service cloud.firestore {
              isOptionalString(data, 'emergencyContactRelationship', 60) &&
              data.role is string && data.role in ['GUEST', 'YOUTH_MEMBER', 'DEPARTMENT_LEADER', 'YOUTH_EXECUTIVE', 'ADMINISTRATOR'] &&
              data.department is string && data.department.size() >= 1 && data.department.size() <= 50 &&
+             isOptionalString(data, 'address', 250) &&
              isOptionalString(data, 'fellowshipGroup', 100) &&
              data.preferredLanguage is string && data.preferredLanguage in ['en', 'yo', 'ha', 'ig'] &&
              data.englishOverride is bool &&
@@ -240,7 +241,7 @@ service cloud.firestore {
                        request.auth.uid == userId &&
                        incoming().userId == request.auth.uid &&
                        incoming().keys().hasAll(['userId', 'fullName', 'email', 'role', 'department', 'preferredLanguage', 'englishOverride', 'xpPoints', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'fullName', 'email', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'fullName', 'email', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'address', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'createdAt', 'updatedAt']) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        isValidUserProfile(incoming()) &&
@@ -255,9 +256,9 @@ service cloud.firestore {
                        (
                          (request.auth.uid == userId &&
                           incoming().role == existing().role &&
-                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt'])) ||
+                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'department', 'address', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt'])) ||
                          (isAdmin() &&
-                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt']))
+                          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhotoUri', 'passwordHash', 'salt', 'status', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship', 'role', 'department', 'address', 'fellowshipGroup', 'preferredLanguage', 'englishOverride', 'xpPoints', 'updatedAt']))
                        );
 
       allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());

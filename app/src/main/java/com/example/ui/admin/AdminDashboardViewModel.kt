@@ -178,10 +178,10 @@ class AdminDashboardViewModel(
                 contentBody.trim().take(120).ifBlank { "Audio Sermon • ${audioDraft?.fileName ?: title.trim()}" }
             }
             val resolvedBody = contentBody.trim().ifBlank { resolvedSummary }
-            val resolvedDuration = if (normalizedCategory == "SERMON") {
+            val resolvedDuration = if (hasUploadedAudio) {
                 (audioDraft?.durationMinutes ?: durationMinutes).coerceAtLeast(1)
             } else {
-                durationMinutes.coerceAtLeast(0)
+                0
             }
             val resource = SpiritualResourceEntity(
                 id = "res_${UUID.randomUUID().toString().take(8)}",

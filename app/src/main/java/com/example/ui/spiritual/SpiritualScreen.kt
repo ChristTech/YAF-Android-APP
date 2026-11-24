@@ -883,7 +883,7 @@ private fun SpiritualResourceCard(
                         }
                     }
                 }
-            } else if (resource.audioDurationMinutes > 0 || isPlaying) {
+            } else if (isPlaying) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier
@@ -895,23 +895,19 @@ private fun SpiritualResourceCard(
                 ) {
                     IconButton(onClick = onToggleAudio) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = "Audio Play",
+                            imageVector = Icons.Default.Pause,
+                            contentDescription = "Pause Text-to-Speech",
                             tint = FlameRedPrimary
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isPlaying) {
-                                "Playing audio narration..."
-                            } else {
-                                "Audio Narration (${resource.audioDurationMinutes} mins)"
-                            },
+                            text = "Reading message text aloud (Text-to-Speech)...",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
-                            progress = { if (isPlaying) progress else 0f },
+                            progress = { progress },
                             modifier = Modifier.fillMaxWidth().height(4.dp),
                             color = FlameRedPrimary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -936,9 +932,10 @@ private fun SpiritualResourceCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = when {
-                            isPlaying -> "Pause Audio"
+                            isPlaying && resource.hasAudio -> "Pause Audio"
+                            isPlaying -> "Stop Reading"
                             resource.hasAudio -> "Play Sermon Audio"
-                            else -> "Listen Aloud"
+                            else -> "Read Aloud (TTS)"
                         },
                         color = FlameRedPrimary,
                         fontWeight = FontWeight.Bold
@@ -1081,9 +1078,10 @@ private fun ResourceReaderDialog(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = when {
-                                isPlayingAudio -> "Pause Audio"
+                                isPlayingAudio && resource.hasAudio -> "Pause Audio"
+                                isPlayingAudio -> "Stop Reading"
                                 resource.hasAudio -> "Play Sermon"
-                                else -> "Listen Aloud"
+                                else -> "Read Aloud (TTS)"
                             },
                             color = FlameRedPrimary,
                             fontWeight = FontWeight.Bold
@@ -1161,7 +1159,7 @@ fun PublishResourceDialog(
     }
     var durationText by remember(editingResource, initialCategory) {
         mutableStateOf(
-            (editingResource?.audioDurationMinutes?.takeIf { it > 0 } ?: 30).toString()
+            (editingResource?.takeIf { it.hasAudio }?.audioDurationMinutes?.takeIf { it > 0 } ?: 0).toString()
         )
     }
     var attachedFileName by remember { mutableStateOf<String?>(null) }
@@ -1202,14 +1200,14 @@ fun PublishResourceDialog(
         }
     }
 
-    // Opens Android's Music / Audio / Voice Recorder / Files audio picker directly
+    // Opens Android's Audio & Video file picker (videos automatically have their audio track extracted)
     val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) handleSelectedAudioUri(uri)
     }
 
-    // Fallback unrestricted file browser for OEMs/Drive/WhatsApp where audio MIME filters grey out .m4a/.opus/.mp3 files
+    // Fallback unrestricted file browser for OEMs/Drive/WhatsApp where MIME filters grey out .m4a/.opus/.mp3/.mp4 files
     val audioBroadPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -1220,7 +1218,7 @@ fun PublishResourceDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            if (isSermon && SpiritualResourceRepositoryImpl.isExplicitAudioFile(context, uri)) {
+            if (isSermon && SpiritualResourceRepositoryImpl.isSupportedAudioCandidate(context, uri)) {
                 handleSelectedAudioUri(uri)
             } else {
                 coroutineScope.launch {
@@ -1305,7 +1303,7 @@ fun PublishResourceDialog(
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = "AUDIO SERMON UPLOAD (SINGLE ACTIVE AUDIO)",
+                                text = "AUDIO SERMON UPLOAD (AUDIO OR VIDEO)",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = FlameRedPrimary,
                                     fontWeight = FontWeight.ExtraBold
@@ -1313,13 +1311,13 @@ fun PublishResourceDialog(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Uploading an audio sermon will automatically delete & replace the previous uploaded audio sermon across devices.",
+                                text = "Select an audio file (.mp3, .m4a, .aac, .wav) or video (.mp4, .mov, .mkv — audio track is extracted automatically) to play the real recording and replace any previous audio sermon.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(
-                                onClick = { audioPickerLauncher.launch("audio/*") },
+                                onClick = { audioPickerLauncher.launch(arrayOf("audio/*", "video/*")) },
                                 enabled = !isImportingAudio,
                                 colors = ButtonDefaults.buttonColors(containerColor = FlameRedPrimary),
                                 shape = RoundedCornerShape(10.dp),
@@ -1332,15 +1330,15 @@ fun PublishResourceDialog(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Importing Audio...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Importing / Extracting Audio...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 } else {
                                     Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (attachedAudioDraft != null || (!existingAudioRemoved && editingResource?.hasAudio == true)) {
-                                            "Replace Selected Audio File"
+                                            "Replace Selected Audio / Video File"
                                         } else {
-                                            "Select Audio File (.mp3, .m4a, .aac, .wav)"
+                                            "Select Audio or Video File (.mp3, .m4a, .mp4)"
                                         },
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -1379,7 +1377,7 @@ fun PublishResourceDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = activeDraft.fileName,
+                                                text = "✓ Attached: ${activeDraft.fileName}",
                                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                                 maxLines = 1
                                             )
@@ -1414,7 +1412,7 @@ fun PublishResourceDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "Attached: $activeExistingFileName",
+                                                text = "✓ Attached: $activeExistingFileName",
                                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                                 maxLines = 1
                                             )
@@ -1435,6 +1433,13 @@ fun PublishResourceDialog(
                                         }
                                     }
                                 }
+                            } else if (!isImportingAudio) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "No audio/video attached yet. Without an attached file, only text notes will publish.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -1540,7 +1545,9 @@ fun PublishResourceDialog(
                     minLines = 3
                 )
 
-                if (isSermon) {
+                val hasAudioAttachedNow = isSermon &&
+                    (attachedAudioDraft != null || (!existingAudioRemoved && editingResource?.hasAudio == true))
+                if (hasAudioAttachedNow) {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = durationText,
@@ -1599,8 +1606,8 @@ fun PublishResourceDialog(
                             localValidationError = "Please enter a Message Title and either an audio file or message content."
                             return@Button
                         }
-                        val parsedDuration = if (isSermon) {
-                            attachedAudioDraft?.durationMinutes ?: (durationText.toIntOrNull() ?: 30)
+                        val parsedDuration = if (hasAudioAttached) {
+                            (attachedAudioDraft?.durationMinutes ?: durationText.toIntOrNull() ?: editingResource?.audioDurationMinutes ?: 1).coerceAtLeast(1)
                         } else {
                             0
                         }

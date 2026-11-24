@@ -92,36 +92,49 @@ object DatabasePrepopulator {
             val existingAdmin = userDao.getUserByEmail(adminUser.email) ?: userDao.getUserByIdSync(adminUser.id)
             if (existingAdmin == null) {
                 userDao.insertUser(adminUser)
-            } else if (existingAdmin.fullName != OFFICIAL_ADMIN_NAME ||
-                existingAdmin.role != UserRole.ADMINISTRATOR ||
-                existingAdmin.status != AccountStatus.APPROVED ||
-                existingAdmin.emergencyContactName.isNotBlank() ||
-                existingAdmin.address.contains("ECWA", ignoreCase = true) ||
-                existingAdmin.address.isBlank()
-            ) {
-                userDao.updateUser(
-                    existingAdmin.copy(
-                        fullName = OFFICIAL_ADMIN_NAME,
-                        role = UserRole.ADMINISTRATOR,
-                        status = AccountStatus.APPROVED,
-                        dateOfBirth = "",
-                        gender = Gender.PREFER_NOT_TO_SAY,
-                        address = OFFICIAL_ADMIN_ADDRESS,
-                        fellowshipGroup = "Central Administration",
-                        emergencyContactName = "",
-                        emergencyContactPhone = "",
-                        emergencyContactRelationship = ""
+            } else {
+                val hasLegacyName = isLegacyAdminAlias(existingAdmin.fullName)
+                val hasLegacyAddress = existingAdmin.address == "12 Cathedral Way, Lagos" ||
+                    existingAdmin.address.isBlank() ||
+                    existingAdmin.address.contains("ECWA", ignoreCase = true)
+
+                if (hasLegacyName ||
+                    hasLegacyAddress ||
+                    existingAdmin.role != UserRole.ADMINISTRATOR ||
+                    existingAdmin.status != AccountStatus.APPROVED ||
+                    existingAdmin.emergencyContactName.isNotBlank()
+                ) {
+                    userDao.updateUser(
+                        existingAdmin.copy(
+                            fullName = if (hasLegacyName) OFFICIAL_ADMIN_NAME else existingAdmin.fullName,
+                            role = UserRole.ADMINISTRATOR,
+                            status = AccountStatus.APPROVED,
+                            dateOfBirth = "",
+                            gender = Gender.PREFER_NOT_TO_SAY,
+                            address = if (hasLegacyAddress) OFFICIAL_ADMIN_ADDRESS else existingAdmin.address,
+                            fellowshipGroup = "Central Administration",
+                            emergencyContactName = "",
+                            emergencyContactPhone = "",
+                            emergencyContactRelationship = ""
+                        )
                     )
-                )
+                }
             }
 
-            // Ensure any active Admin session in Room immediately reflects "Admin" with no aliases
+            // Ensure any active Admin session in Room reflects the current Admin display name without legacy aliases
+            val resolvedAdmin = userDao.getUserByEmail(adminUser.email) ?: userDao.getUserByIdSync(adminUser.id)
             val activeSession = userDao.getActiveSessionSync()
             if (activeSession != null &&
-                (activeSession.userId == OFFICIAL_ADMIN_ID || activeSession.userRole == UserRole.ADMINISTRATOR) &&
-                activeSession.userName != OFFICIAL_ADMIN_NAME
+                (activeSession.userId == OFFICIAL_ADMIN_ID || activeSession.userRole == UserRole.ADMINISTRATOR)
             ) {
-                userDao.saveSession(activeSession.copy(userName = OFFICIAL_ADMIN_NAME))
+                val targetName = if (activeSession.userId == OFFICIAL_ADMIN_ID) {
+                    resolvedAdmin?.fullName?.takeIf { !isLegacyAdminAlias(it) } ?: OFFICIAL_ADMIN_NAME
+                } else {
+                    activeSession.userName.takeIf { !isLegacyAdminAlias(it) } ?: OFFICIAL_ADMIN_NAME
+                }
+                if (activeSession.userName != targetName) {
+                    userDao.saveSession(activeSession.copy(userName = targetName))
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

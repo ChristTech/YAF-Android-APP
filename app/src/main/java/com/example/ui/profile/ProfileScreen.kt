@@ -134,9 +134,14 @@ fun ProfileScreen(
                     ) {
                         val isAdminRole = session.userRole == UserRole.ADMINISTRATOR
                         val resolvedDisplayName = when {
-                            isAdminRole -> "Admin"
-                            !currentUser?.fullName.isNullOrBlank() -> currentUser!!.fullName
-                            else -> session.userName
+                            !currentUser?.fullName.isNullOrBlank() &&
+                                (!isAdminRole || !com.example.data.local.DatabasePrepopulator.isLegacyAdminAlias(currentUser!!.fullName)) ->
+                                currentUser!!.fullName
+                            session.userName.isNotBlank() &&
+                                (!isAdminRole || !com.example.data.local.DatabasePrepopulator.isLegacyAdminAlias(session.userName)) ->
+                                session.userName
+                            isAdminRole -> com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_NAME
+                            else -> "Member"
                         }
 
                         UserAvatar(

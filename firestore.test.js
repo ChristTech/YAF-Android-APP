@@ -519,5 +519,53 @@ test("12. Programmes Auto-Delete Rules: Active future programme protected from n
   );
 });
 
+test("13. User & Fellowship Accounts: Custom address, phone, fullName, and photo updates persist", async () => {
+  const now = new Date();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      fullName: "Pastor Victor",
+      email: "victor@youthalive.org",
+      phone: "+2348011112222",
+      address: "Living Faith Church Secretariat, Ota",
+      role: "YOUTH_MEMBER",
+      department: "GENERAL",
+      preferredLanguage: "en",
+      englishOverride: false,
+      xpPoints: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      address: "Canaanland Youth Alive Secretariat",
+      phone: "+2349099887766",
+      updatedAt: new Date(),
+    })
+  );
+
+  await assertSucceeds(
+    aliceDb.collection("fellowship_accounts").doc("user-admin-01").set({
+      userId: "user-admin-01",
+      fellowshipId: "GIDEONITES",
+      fullName: "Pastor Victor",
+      email: "admin@youthalive.org",
+      phone: "+2349099887766",
+      address: "Canaanland Youth Alive Secretariat",
+      role: "ADMINISTRATOR",
+      department: "GENERAL",
+      preferredLanguage: "en",
+      englishOverride: false,
+      xpPoints: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+});
+
 
 

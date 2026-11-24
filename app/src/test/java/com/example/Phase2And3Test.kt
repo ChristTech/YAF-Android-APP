@@ -488,9 +488,15 @@ class Phase2And3Test {
         assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/octet-stream", "voice_note.m4a"))
         assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/ogg", "whatsapp_audio.opus"))
         assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("video/mp4", "recording.m4a"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("video/mp4", "sunday_video_sermon.mp4"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("video/quicktime", "youth_conference.mov"))
+        assertTrue(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("video/x-matroska", "revival_night.mkv"))
+        assertTrue(SpiritualResourceRepositoryImpl.isVideoContainerCandidate("video/mp4", "sunday_video_sermon.mp4"))
+        assertFalse(SpiritualResourceRepositoryImpl.isVideoContainerCandidate("audio/mpeg", "sunday_sermon.mp3"))
         assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/pdf", "sermon_notes.pdf"))
         assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("application/epub+zip", "bible.epub"))
         assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("text/plain", "notes.txt"))
+        assertFalse(SpiritualResourceRepositoryImpl.isSupportedAudioCandidate("image/jpeg", "flyer.jpg"))
     }
 
     @Test
@@ -525,5 +531,178 @@ class Phase2And3Test {
         assertEquals("v1.2.0", parsed.tagName)
         assertEquals("https://github.com/ChristTech/YAF-Android-APP/releases/download/v1.2.0/app-release.apk", parsed.apkDownloadUrl)
         assertEquals("app-release.apk", parsed.apkFileName)
+    }
+
+    @Test
+    fun testEditedAdminInfoPersistsAcrossLogoutPrepopulationCloudSyncAndReLogin() = runBlocking {
+        val userRepo = com.example.data.repository.UserRepositoryImpl(
+            userDao = database.userDao(),
+            auditLogDao = database.auditLogDao(),
+            database = database
+        )
+
+        // 1. Admin logs in initially with default credentials
+        val initialLogin = userRepo.login("admin@youthalive.org", "AdminPass#2026")
+        assertTrue(initialLogin is com.example.data.repository.AuthResult.Success)
+        val initialAdmin = (initialLogin as com.example.data.repository.AuthResult.Success).user
+
+        // 2. Admin edits name, phone, office address, and emblem URI
+        val editedAdmin = initialAdmin.copy(
+            fullName = "Pastor Victor Adebisi",
+            phone = "+2349012345678",
+            address = "Winners Chapel International Youth Secretariat, Ota",
+            profilePhotoUri = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        )
+        userRepo.updateUserProfile(editedAdmin)
+
+        // Active session must reflect updated name immediately
+        val activeSessionAfterEdit = userRepo.getActiveSessionSync()
+        assertEquals("Pastor Victor Adebisi", activeSessionAfterEdit?.userName)
+
+        // 3. Log out, simulate prepopulator & cloud sync (both stale cloud snapshot and updated cloud snapshot)
+        userRepo.logout()
+        assertEquals(null, userRepo.getActiveSessionSync())
+
+        com.example.data.local.DatabasePrepopulator.populateInitialData(database)
+
+        // Simulate stale cloud snapshot arriving right after logout
+        val staleTime = java.util.Date(System.currentTimeMillis() - 60_000L)
+        userRepo.syncCloudAccountsToLocalDb(
+            listOf(
+                com.example.data.remote.CloudUserProfile(
+                    id = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID,
+                    userId = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID,
+                    fullName = "Admin",
+                    email = "admin@youthalive.org",
+                    phone = "+2348011223344",
+                    address = "Living Faith Church Youth Alive Fellowship Secretariat",
+                    role = "ADMINISTRATOR",
+                    status = "APPROVED",
+                    updatedAt = com.google.firebase.Timestamp(staleTime)
+                )
+            )
+        )
+
+        // 4. Re-login and verify edited admin info did NOT revert to default state
+        val reLogin = userRepo.login("admin@youthalive.org", "AdminPass#2026")
+        assertTrue(reLogin is com.example.data.repository.AuthResult.Success)
+        val restoredAdmin = (reLogin as com.example.data.repository.AuthResult.Success).user
+        assertEquals("Pastor Victor Adebisi", restoredAdmin.fullName)
+        assertEquals("+2349012345678", restoredAdmin.phone)
+        assertEquals("Winners Chapel International Youth Secretariat, Ota", restoredAdmin.address)
+        assertEquals("data:image/jpeg;base64,/9j/4AAQSkZJRg==", restoredAdmin.profilePhotoUri)
+        assertEquals("Pastor Victor Adebisi", userRepo.getActiveSessionSync()?.userName)
+
+        // 5. Verify newer cloud update (e.g., removing emblem from another device) propagates cleanly
+        val newerTime = java.util.Date(System.currentTimeMillis() + 60_000L)
+        userRepo.syncCloudAccountsToLocalDb(
+            listOf(
+                com.example.data.remote.CloudUserProfile(
+                    id = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID,
+                    userId = com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID,
+                    fullName = "Pastor Victor Adebisi",
+                    email = "admin@youthalive.org",
+                    phone = "+2349012345678",
+                    address = "Canaanland Youth Office",
+                    profilePhotoUri = null,
+                    role = "ADMINISTRATOR",
+                    status = "APPROVED",
+                    updatedAt = com.google.firebase.Timestamp(newerTime)
+                )
+            )
+        )
+        val afterCloudClear = database.userDao().getUserByIdSync(com.example.data.local.DatabasePrepopulator.OFFICIAL_ADMIN_ID)
+        assertEquals("Canaanland Youth Office", afterCloudClear?.address)
+        assertEquals(null, afterCloudClear?.profilePhotoUri)
+    }
+
+    @Test
+    fun testAudioSermonMetadataJsonNeverTruncatesAudioFieldsOrWipesLocalAudio() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val audioDir = java.io.File(context.filesDir, "sermon_audio").apply { mkdirs() }
+        val audioFile = java.io.File(audioDir, "sa_longmeta99.m4a").apply { writeBytes(byteArrayOf(9, 8, 7, 6)) }
+
+        val longTitle = "Dominion Through The Holy Ghost & Fire For Living Faith Church Youths Across Every Campus And City Fellowship " + "A".repeat(120)
+        val longSummary = "Detailed sermon description with quotes \"Jesus is Lord\" and\nnewlines explaining every point of the video message so it would have overflowed 980 chars previously. " + "B".repeat(260)
+
+        val audioSermon = SpiritualResourceEntity(
+            id = "sermon-long-meta-1",
+            title = longTitle,
+            category = "SERMON",
+            speakerOrAuthor = "Pastor David",
+            scriptureReference = "Acts 1:8",
+            summary = longSummary,
+            contentBody = longSummary,
+            audioDurationMinutes = 42,
+            publishedAt = 2_000_000_000L,
+            audioUri = audioFile.absolutePath,
+            audioCloudId = "sa_longmeta99",
+            audioFileName = "very_long_sunday_service_sermon_video_extracted_audio_track_recording_final_mix.m4a",
+            audioMimeType = "audio/mp4",
+            audioSizeBytes = 5_432_100L,
+            audioChunkCount = 12
+        )
+
+        val json = (spiritualRepository as SpiritualResourceRepositoryImpl).buildResourceMetadataJson(audioSermon)
+        assertTrue("Metadata JSON must not exceed 980 chars (was ${json.length})", json.length <= 980)
+        assertTrue("Metadata JSON must remain valid JSON ending with '}'", json.startsWith("{") && json.endsWith("}"))
+        val parsed = org.json.JSONObject(json)
+        assertEquals("sa_longmeta99", parsed.getString("audioCloudId"))
+        assertEquals(12, parsed.getInt("audioChunkCount"))
+        assertEquals(42, parsed.getInt("audioDurationMinutes"))
+
+        // Save locally and simulate cloud sync returning this metadata AND an older stale cloud audio sermon
+        spiritualRepository.addResource(audioSermon)
+        spiritualRepository.syncCloudScripturesToLocalDb(
+            listOf(
+                com.example.data.remote.CloudDailyScripture(
+                    id = "scripture_sermon-long-meta-1",
+                    authorName = "Pastor David",
+                    referenceEn = "Acts 1:8",
+                    verseTextEn = longSummary,
+                    reflectionEn = longSummary,
+                    prayerPromptEn = json
+                ),
+                com.example.data.remote.CloudDailyScripture(
+                    id = "scripture_older-audio",
+                    authorName = "Pastor Old",
+                    referenceEn = "John 3:16",
+                    verseTextEn = "Older audio",
+                    reflectionEn = "Older body",
+                    prayerPromptEn = """{"category":"SERMON","audioDurationMinutes":10,"publishedAt":1000000000,"audioCloudId":"sa_old999","audioFileName":"old.mp3","audioMimeType":"audio/mpeg","audioSizeBytes":1000,"audioChunkCount":1,"title":"Older Audio"}"""
+                )
+            )
+        )
+
+        val synced = spiritualRepository.getResourceById("sermon-long-meta-1").let {
+            database.spiritualResourceDao().getResourceByIdSync("sermon-long-meta-1")
+        }
+        assertNotNull("Newer audio sermon must NOT be deleted or wiped by sync", synced)
+        assertTrue("hasAudio must remain true after cloud sync", synced!!.hasAudio)
+        assertEquals("sa_longmeta99", synced.audioCloudId)
+        assertEquals(audioFile.absolutePath, synced.audioUri)
+        assertEquals(12, synced.audioChunkCount)
+        assertTrue("Local audio file must still exist", audioFile.exists())
+    }
+
+    @Test
+    fun testTextOnlySermonHasZeroAudioDurationAndNoFakeNarrationDuration() = runBlocking {
+        val vm = com.example.ui.spiritual.SpiritualViewModel(spiritualRepository)
+        vm.publishResource(
+            title = "Written Sermon Notes Only",
+            category = "SERMON",
+            author = "Pastor Sam",
+            scripture = "Romans 8:28",
+            summary = "Summary of text sermon without uploaded media",
+            content = "Full outline of text sermon",
+            duration = 30,
+            audioDraft = null
+        )
+        kotlinx.coroutines.delay(150L)
+        val all = spiritualRepository.getAllResources().first()
+        val textSermon = all.firstOrNull { it.title == "Written Sermon Notes Only" }
+        assertNotNull(textSermon)
+        assertFalse(textSermon!!.hasAudio)
+        assertEquals(0, textSermon.audioDurationMinutes)
     }
 }

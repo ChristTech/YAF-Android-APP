@@ -376,7 +376,7 @@ class SpiritualViewModel(
                     cleanContent.take(160).ifBlank { "Audio Sermon • ${audioDraft?.fileName ?: cleanTitle}" }
                 }
                 val resolvedBody = cleanContent.ifBlank { resolvedSummary }
-                val resolvedDuration = if (category.equals("SERMON", ignoreCase = true)) {
+                val resolvedDuration = if (hasUploadedAudio) {
                     (audioDraft?.durationMinutes ?: duration).coerceAtLeast(1)
                 } else {
                     0
@@ -474,8 +474,8 @@ class SpiritualViewModel(
                     }
                 }
                 val resolvedBody = cleanContent.ifBlank { resolvedSummary }
-                val resolvedDuration = if (category.equals("SERMON", ignoreCase = true)) {
-                    (audioDraft?.durationMinutes ?: duration).coerceAtLeast(1)
+                val resolvedDuration = if (keepsOrHasAudio) {
+                    (audioDraft?.durationMinutes ?: existingResource.audioDurationMinutes.takeIf { it > 0 } ?: duration).coerceAtLeast(1)
                 } else {
                     0
                 }
